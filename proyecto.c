@@ -15,7 +15,7 @@ struct arma_
     int alcance;
     int energia;
     bool en_uso;
-}arma_principal, arma_especial;
+};
 typedef struct arma_ arma;
 
 struct personaje_
@@ -26,14 +26,44 @@ struct personaje_
     int energia;
     bool ataque;
     arma armas;
-}lester, alien_guardia, alien_jefe, alien_amigo, alien_enemigo;
+};
 typedef struct personaje_ personaje;
 
+struct enemigo_
+{
+    int x;
+    int y;
+    int vida;
+    int energia;
+    int daño;
+    int alcance;
+    int velocidad;
+    bool ataque;
+};
+typedef struct enemigo_ enemigo;
 
+struct cofre_
+{
+    int x;
+    int y;
+    bool abierto;
+    int contenido;
+};
+typedef struct cofre_ cofre;
+
+struct pocion_
+{
+    int x;
+    int y;
+    bool usada;
+    int tipo; 
+};
+typedef struct pocion_ pocion;
 
 void limites_pantalla(float *x, float *y);
 void gravedad(float *y, float *velocidad_caida);
 bool impacto(float x1, float y1, float x2, float y2);
+void cargar_mapa(const char *nombre_archivo);
 
 int main()
 {
@@ -50,7 +80,6 @@ int main()
     al_register_event_source(queue, al_get_keyboard_event_source());
     al_register_event_source(queue, al_get_display_event_source(display));
     al_register_event_source(queue, al_get_timer_event_source(timer));
-
 }
 
 void limites_pantalla(float *x, float *y)
@@ -90,4 +119,61 @@ bool impacto(float x1, float y1, float x2, float y2)
         return true;
     }
     return false;
+}
+
+void cargar_mapa(const char *nombre_archivo)
+{
+    int i,j;
+    FILE *archivo=fopen(nombre_archivo, "r");
+    if(archivo==NULL)
+    {
+        printf("Error al abrir el archivo");
+        return;
+    }
+    int mapa[12][16];
+    for (i=0;i<12;i++)
+    {
+        for(j=0;j<16;j++)
+        {
+            fscanf(archivo,"%d",&mapa[i][j]);
+            if(mapa[i][j]==9)
+            {
+                personaje.x*TAM_TILE;
+                personaje.y*TAM_TILE;
+                mapa[i][j]=0;
+            }
+            else if(mapa[i][j]==8)
+            {
+                alien_guardia.x=TAM_TILE*j;
+                alien_guardia.y=TAM_TILE*i;
+                mapa[i][j]=0;
+            }
+            else if(mapa[i][j]==7)
+            {
+                alien_jefe.x=TAM_TILE*j;
+                alien_jefe.y=TAM_TILE*i;
+                mapa[i][j]=0;
+            }
+            else if(mapa[i][j]==6)
+            {
+                compañero.x=TAM_TILE*j;
+                compañero.y=TAM_TILE*i;
+                mapa[i][j]=0;
+            }
+            else if(mapa[i][j]==5)
+            {
+                alien_enemigo.x=TAM_TILE*j;
+                alien_enemigo.y=TAM_TILE*i;
+                mapa[i][j]=0;
+            }
+            else if(mapa[i][j]==4)
+            {
+                cofre.x=TAM_TILE*j;
+                cofre.y=TAM_TILE*i;
+                mapa[i][j]=0;
+            }
+        }
+    }
+    fclose(archivo);
+    return;
 }
