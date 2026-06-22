@@ -20,8 +20,8 @@ typedef struct arma_ arma;
 
 struct personaje_
 {
-    int x;
-    int y;
+    float x;
+    float y;
     int vida;
     int energia;
     bool ataque;
@@ -31,8 +31,8 @@ typedef struct personaje_ personaje;
 
 struct enemigo_
 {
-    int x;
-    int y;
+    float x;
+    float y;
     int vida;
     int energia;
     int daño;
@@ -44,8 +44,8 @@ typedef struct enemigo_ enemigo;
 
 struct cofre_
 {
-    int x;
-    int y;
+    float x;
+    float y;
     bool abierto;
     int contenido;
 };
@@ -53,8 +53,8 @@ typedef struct cofre_ cofre;
 
 struct pocion_
 {
-    int x;
-    int y;
+    float x;
+    float y;
     bool usada;
     int tipo; 
 };
@@ -72,6 +72,8 @@ int main()
         printf("Error al abrir Allegro");
         return -1;
     }
+
+    personaje persona;
     al_init_primitives_addon();
     al_install_keyboard(); //teclado
     ALLEGRO_DISPLAY *display = al_create_display(800, 600);
@@ -121,7 +123,7 @@ bool impacto(float x1, float y1, float x2, float y2)
     return false;
 }
 
-void cargar_mapa(const char *nombre_archivo)
+void cargar_mapa(const char *nombre_archivo, personaje p)
 {
     int i,j;
     FILE *archivo=fopen(nombre_archivo, "r");
@@ -138,8 +140,8 @@ void cargar_mapa(const char *nombre_archivo)
             fscanf(archivo,"%d",&mapa[i][j]);
             if(mapa[i][j]==9)
             {
-                personaje.x*TAM_TILE;
-                personaje.y*TAM_TILE;
+                p.x=TAM_TILE*j;
+                p.y=TAM_TILE*i;  
                 mapa[i][j]=0;
             }
             else if(mapa[i][j]==8)
