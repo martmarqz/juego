@@ -113,6 +113,8 @@ int main()
     bool derecha=false;
     int i,j;
     float x_bloque,y_bloque,velocidad_caida=0.0;
+    basico.vida=50;
+    basico.velocidad=1.5;
 
     al_start_timer(timer);
 
@@ -222,6 +224,7 @@ int main()
                 }
             }
             al_draw_filled_rectangle(heroe.x,heroe.y,heroe.x+30,heroe.y+30,al_map_rgb(255,50,50));
+            al_draw_filled_rectangle(basico.x,basico.y,basico.x+35,basico.y+35,al_map_rgb(50,200,50));
 
             al_flip_display();
         }
