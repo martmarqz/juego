@@ -37,6 +37,7 @@ struct enemigo_
 {
     float x;
     float y;
+    /*tipo*/
     int vida;
     int energia;
     int daño;
@@ -64,7 +65,7 @@ struct pocion_
 };
 typedef struct pocion_ pocion;
 
-int mapa[fila][columna];
+char mapa[fila][columna];
 personaje heroe;
 personaje amigo;
 enemigo guardia;
@@ -78,6 +79,16 @@ bool cargar_mapa(const char *nombre_archivo);
 
 int main()
 {
+    bool corriendo=true;
+    bool dibujar=true;
+    bool izquierda=false;
+    bool derecha=false;
+    int i,j;
+    float x_bloque,y_bloque,velocidad_caida=0.0;
+    basico.vida=50;
+    basico.velocidad=1.5;
+    heroe.vida=100;
+
     if(!cargar_mapa("nivel1.txt"))
     {
         return -1;
@@ -107,15 +118,7 @@ int main()
     al_register_event_source(queue, al_get_display_event_source(display));
     al_register_event_source(queue, al_get_timer_event_source(timer));
 
-    bool corriendo=true;
-    bool dibujar=true;
-    bool izquierda=false;
-    bool derecha=false;
-    int i,j;
-    float x_bloque,y_bloque,velocidad_caida=0.0;
-    basico.vida=50;
-    basico.velocidad=1.5;
-
+   
     al_start_timer(timer);
 
     while (corriendo)
