@@ -84,8 +84,13 @@ int main()
     bool izquierda=false;
     bool derecha=false;
     int i,j;
+    int fila_animacion=0;
     float x_bloque,y_bloque;
     float velocidad_caida=0.0;
+    float ancho_casilla=922.0/10.0;
+    float alto_casilla=505.0/5.0;
+    float r_x=1*ancho_casilla; 
+    float r_y=fila_animacion*alto_casilla;
     heroe.vida=100;
 
     if(!cargar_mapa("nivel1.txt"))
@@ -112,11 +117,18 @@ int main()
         printf("Error fatal: No se encontro 'Fondo1.jpg'\n");
         return -1;
     }
+    ALLEGRO_BITMAP *img_jugador=al_load_bitmap("jugador.png");
+    if(!img_jugador)
+    {
+        printf("Error fatal: No se encontro 'Jugador.png'\n");
+        return -1;
+    }
 
     al_register_event_source(queue, al_get_keyboard_event_source());
     al_register_event_source(queue, al_get_display_event_source(display));
     al_register_event_source(queue, al_get_timer_event_source(timer));
 
+    al_convert_mask_to_alpha(img_jugador,al_map_rgb(0,255,0));
    
     al_start_timer(timer);
 
@@ -235,7 +247,21 @@ int main()
                     }
                 }
             }
-            al_draw_filled_rectangle(heroe.x,heroe.y,heroe.x+30,heroe.y+30,al_map_rgb(255,50,50));
+            if(heroe.vida>0)
+            {
+                if(izquierda||derecha)
+                {
+                    fila_animacion=1; 
+                }
+                al_draw_scaled_bitmap(
+                        img_jugador,
+                        r_x,r_y,
+                        ancho_casilla,alto_casilla,
+                        heroe.x,heroe.y,
+                        30,30,
+                        0
+                    );
+            }
             for(i=0;i<total_enemigos;i++)
             {
                 if(enemigos[i].tipo=='2')
@@ -260,6 +286,7 @@ int main()
     al_destroy_event_queue(queue);
     al_destroy_display(display);
     al_destroy_bitmap(fondo_nivel1);
+    al_destroy_bitmap(img_jugador);
     
     return 0;
 }
