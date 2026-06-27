@@ -11,6 +11,7 @@
 #define TAM_TILE 40
 #define fila 15
 #define columna 20
+#define MAX_ENEMIGOS 4
 
 struct arma_
 {
@@ -37,7 +38,7 @@ struct enemigo_
 {
     float x;
     float y;
-    /*tipo*/
+    int tipo;
     int vida;
     int energia;
     int daño;
@@ -66,11 +67,10 @@ struct pocion_
 typedef struct pocion_ pocion;
 
 char mapa[fila][columna];
+int total_enemigos=0;
 personaje heroe;
 personaje amigo;
-enemigo guardia;
-enemigo jefe;
-enemigo basico;
+enemigo enemigos[MAX_ENEMIGOS];
 cofre cofrecito;
 
 void limites_pantalla(float *x, float *y);
@@ -84,9 +84,8 @@ int main()
     bool izquierda=false;
     bool derecha=false;
     int i,j;
-    float x_bloque,y_bloque,velocidad_caida=0.0;
-    basico.vida=50;
-    basico.velocidad=1.5;
+    float x_bloque,y_bloque;
+    float velocidad_caida=0.0;
     heroe.vida=100;
 
     if(!cargar_mapa("nivel1.txt"))
@@ -198,6 +197,16 @@ int main()
                 }
                 velocidad_caida = 0;
             }
+            for(i=0;i<total_enemigos;i++)
+            {
+                if(enemigos[i].velocidad!=0)
+                enemigos[i].x+=enemigos[i].velocidad;
+                if(colision(enemigos[i].x,enemigos[i].y))
+                {
+                    enemigos[i].velocidad=-enemigos[i].velocidad;
+                    enemigos[i].x+=enemigos[i].velocidad;
+                }
+            }
             dibujar=true;
         }
 
@@ -217,7 +226,7 @@ int main()
             {
                 for(j=0;j<columna;j++)
                 {
-                    if(mapa[i][j]==1)
+                    if(mapa[i][j]=='1')
                     {
                         x_bloque=j*TAM_TILE;
                         y_bloque=i*TAM_TILE; 
@@ -227,7 +236,21 @@ int main()
                 }
             }
             al_draw_filled_rectangle(heroe.x,heroe.y,heroe.x+30,heroe.y+30,al_map_rgb(255,50,50));
-            al_draw_filled_rectangle(basico.x,basico.y,basico.x+35,basico.y+35,al_map_rgb(50,200,50));
+            for(i=0;i<total_enemigos;i++)
+            {
+                if(enemigos[i].tipo=='2')
+                {
+                    al_draw_filled_rectangle(enemigos[i].x,enemigos[i].y,enemigos[i].x+25,enemigos[i].y+25,al_map_rgb(50,200,50));
+                }
+                if(enemigos[i].tipo=='5')
+                {
+                    al_draw_filled_rectangle(enemigos[i].x,enemigos[i].y,enemigos[i].x+35,enemigos[i].y+35,al_map_rgb(200,50,200));
+                }
+                if(enemigos[i].tipo=='9')
+                {
+                    al_draw_filled_rectangle(enemigos[i].x,enemigos[i].y,enemigos[i].x+50,enemigos[i].y+50,al_map_rgb(50,50,200));
+                }
+            }
 
             al_flip_display();
         }
@@ -271,19 +294,19 @@ bool colision(float x,float y)
     {
         return true;
     }
-    if (mapa[arr][izq] == 1) 
+    if (mapa[arr][izq]=='1') 
     {
         return true;
     }
-    if (mapa[arr][der] == 1) 
+    if (mapa[arr][der]=='1') 
     {
         return true;
     }
-    if (mapa[aba][izq] == 1) 
+    if (mapa[aba][izq]=='1') 
     {
         return true;
     }
-    if (mapa[aba][der] == 1) 
+    if (mapa[aba][der]=='1') 
     {
         return true;
     }
@@ -303,38 +326,43 @@ bool cargar_mapa(const char *nombre_archivo)
     {
         for(j=0;j<columna;j++)
         {
-            fscanf(archivo,"%d",&mapa[i][j]);
-            if(mapa[i][j]==9)
+            fscanf(archivo," %c",&mapa[i][j]);
+            if(mapa[i][j]=='*')
             {
                 heroe.x=TAM_TILE*j;
                 heroe.y=TAM_TILE*i;  
                 mapa[i][j]=0;
             }
-            else if(mapa[i][j]==8)
+            else if(mapa[i][j]=='2'||mapa[i][j]=='5'||mapa[i][j]=='9')
             {
-                guardia.x=TAM_TILE*j;
-                guardia.y=TAM_TILE*i;
+                if(total_enemigos<MAX_ENEMIGOS)
+                {
+                    enemigos[total_enemigos].x=TAM_TILE*j;
+                    enemigos[total_enemigos].y=TAM_TILE*i;
+                    enemigos[total_enemigos].tipo=mapa[i][j];
+                    if(mapa[i][j]=='2')
+                    {
+                        enemigos[total_enemigos].velocidad=0.5;
+                    }
+                    if(mapa[i][j]=='5')
+                    {
+                        enemigos[total_enemigos].velocidad=1.5;
+                    }
+                    if(mapa[i][j]=='9')
+                    {
+                        enemigos[total_enemigos].velocidad=0.0;
+                    }
+                    total_enemigos++;
+                }
                 mapa[i][j]=0;
             }
-            else if(mapa[i][j]==7)
-            {
-                jefe.x=TAM_TILE*j;
-                jefe.y=TAM_TILE*i;
-                mapa[i][j]=0;
-            }
-            else if(mapa[i][j]==6)
+            else if(mapa[i][j]=='#')
             {
                 amigo.x=TAM_TILE*j;
                 amigo.y=TAM_TILE*i;
                 mapa[i][j]=0;
             }
-            else if(mapa[i][j]==5)
-            {
-                basico.x=TAM_TILE*j;
-                basico.y=TAM_TILE*i;
-                mapa[i][j]=0;
-            }
-            else if(mapa[i][j]==4)
+            else if(mapa[i][j]=='c')
             {
                 cofrecito.x=TAM_TILE*j;
                 cofrecito.y=TAM_TILE*i;
