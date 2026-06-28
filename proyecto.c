@@ -22,6 +22,7 @@ struct arma_
 };
 typedef struct arma_ arma;
 
+//INCLUIR A CADA STRUCT QUE LO NECEISITE UN ALTO Y ANCHO
 struct personaje_
 {
     float x;
@@ -66,6 +67,7 @@ struct pocion_
 };
 typedef struct pocion_ pocion;
 
+//CAMBIAR VARIABLES GLOBALES A LOCALES
 char mapa[fila][columna];
 int total_enemigos=0;
 personaje heroe;
@@ -73,12 +75,21 @@ personaje amigo;
 enemigo enemigos[MAX_ENEMIGOS];
 cofre cofrecito;
 
+//AGREGAR MÁS FUNCIONES PARA ORDENAR EL JUEGO(SEPARAR DIBUJO DE LOGICA)
+//FUNCION PARA MOVER AL PERSONAJE
+/*
+FUNCION PARA QUE SE MUEVAN LOS ENEMIGOS
+FUNCION PARA QUE SE MUEVAN LOS PROYECTILES
+FUNCION PARA QUE SE MUEVAN LOS PROYECTILES ENEMIGOS
+ETC
+*/
 void limites_pantalla(float *x, float *y);
 bool colision(float x,float y);
 bool cargar_mapa(const char *nombre_archivo);
 
 int main()
 {
+    //BORRAR BOOLEANOS Y USAR ALLEGRO_KEYBOARD_STATE PARA DETECTAR TECLAS
     bool corriendo=true;
     bool dibujar=true;
     bool izquierda=false;
@@ -91,6 +102,8 @@ int main()
     float alto_casilla=505.0/5.0;
     float r_x=1*ancho_casilla; 
     float r_y=fila_animacion*alto_casilla;
+
+    //CREAR UNA FUNCION INICIALIZADORA DE PERSONAJES Y ENEMIGOS
     heroe.vida=100;
 
     if(!cargar_mapa("nivel1.txt"))
@@ -128,7 +141,8 @@ int main()
     al_register_event_source(queue, al_get_display_event_source(display));
     al_register_event_source(queue, al_get_timer_event_source(timer));
 
-    al_convert_mask_to_alpha(img_jugador,al_map_rgb(0,255,0));
+    // 
+    al_convert_mask_to_alpha(img_jugador,al_map_rgb(0, 255, 44));
    
     al_start_timer(timer);
 
