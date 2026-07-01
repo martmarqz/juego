@@ -1,21 +1,22 @@
 #include<stdio.h>
 #include<string.h>
 #include<stdbool.h>
-#include<allegro5/allegro.h> //allegro
-#include<allegro5/allegro_image.h> //imagenes
+#include<allegro5/allegro.h> 
+#include<allegro5/allegro_image.h> 
 #include<allegro5/allegro_font.h> //fuentes
 #include<allegro5/allegro_ttf.h> //fuentes ttf
-#include<allegro5/allegro_primitives.h> //Dibujo 
-#include<allegro5/allegro_audio.h> //audio
+#include<allegro5/allegro_primitives.h>
+#include<allegro5/allegro_audio.h> 
 #include<allegro5/allegro_acodec.h> //audio codecs
 #define TAM_TILE 40
 #define fila 15
 #define columna 20
 #define MAX_ENEMIGOS 4
+#define MAX_LASERS 10
 
 struct arma_
 {
-    int daño;
+    int prejuicio;
     int alcance;
     int energia;
     bool en_uso;
@@ -42,7 +43,7 @@ struct enemigo_
     int tipo;
     int vida;
     int energia;
-    int daño;
+    int herida;
     int alcance;
     float velocidad;
     bool ataque;
@@ -67,23 +68,31 @@ struct pocion_
 };
 typedef struct pocion_ pocion;
 
-//CAMBIAR VARIABLES GLOBALES A LOCALES
+struct lasers_
+{
+    float x;
+    float y;
+    float velocidad;
+    bool activo;
+};
+typedef struct lasers_ lasers;
+
 char mapa[fila][columna];
 int total_enemigos=0;
 personaje heroe;
 personaje amigo;
 enemigo enemigos[MAX_ENEMIGOS];
+lasers laser_protagonista[MAX_LASERS];
+lasers laser_enemigos[MAX_LASERS];
 cofre cofrecito;
 
 //AGREGAR MÁS FUNCIONES PARA ORDENAR EL JUEGO(SEPARAR DIBUJO DE LOGICA)
-//FUNCION PARA MOVER AL PERSONAJE
-/*
-FUNCION PARA QUE SE MUEVAN LOS ENEMIGOS
-FUNCION PARA QUE SE MUEVAN LOS PROYECTILES
-FUNCION PARA QUE SE MUEVAN LOS PROYECTILES ENEMIGOS
-ETC
-*/
 void limites_pantalla(float *x, float *y);
+void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial);
+void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida);
+void mover_enemigos(enemigo ejercito[],int total);
+void mover_lasers(lasers mis_lasers[],int maximo);
+void mover_lasers_enemigos(lasers lasers_malos[],int maximo);
 bool colision(float x,float y);
 bool cargar_mapa(const char *nombre_archivo);
 
@@ -102,9 +111,6 @@ int main()
     float alto_casilla=505.0/5.0;
     float r_x=1*ancho_casilla; 
     float r_y=fila_animacion*alto_casilla;
-
-    //CREAR UNA FUNCION INICIALIZADORA DE PERSONAJES Y ENEMIGOS
-    heroe.vida=100;
 
     if(!cargar_mapa("nivel1.txt"))
     {
@@ -130,10 +136,10 @@ int main()
         printf("Error fatal: No se encontro 'Fondo1.jpg'\n");
         return -1;
     }
-    ALLEGRO_BITMAP *img_jugador=al_load_bitmap("jugador.png");
+    ALLEGRO_BITMAP *img_jugador=al_load_bitmap("prota_caminar.png");
     if(!img_jugador)
     {
-        printf("Error fatal: No se encontro 'Jugador.png'\n");
+        printf("Error fatal: No se encontro 'prota_caminar.png'\n");
         return -1;
     }
 
@@ -393,6 +399,7 @@ bool cargar_mapa(const char *nombre_archivo)
                     {
                         enemigos[total_enemigos].velocidad=0.0;
                     }
+                    inicializar_enemigo(&enemigos[total_enemigos],mapa[i][j],TAM_TILE*j,TAM_TILE*i);
                     total_enemigos++;
                 }
                 mapa[i][j]=0;
@@ -414,4 +421,121 @@ bool cargar_mapa(const char *nombre_archivo)
     }
     fclose(archivo);
     return true;
+}
+
+void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base)
+{
+    (*entidad).velocidad=velocidad_base;
+    (*entidad).vida=vida_base;
+    (*entidad).energia=100;
+    (*entidad).ataque=false;
+}
+
+void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial)
+{
+    (*villano).tipo=tipo_char;
+    (*villano).x=x_inicial;
+    (*villano).y=y_inicial;
+    (*villano).ataque=false;
+    if(tipo_char=='2')
+    {
+        (*villano).vida=50;
+        (*villano).velocidad=0.5;
+        (*villano).herida=5;
+    }
+    if(tipo_char=='5')
+    {
+        (*villano).vida=100;
+        (*villano).velocidad=1.5;
+        (*villano).herida=15;
+    }
+    if(tipo_char=='9')
+    {
+        (*villano).vida=250;
+        (*villano).velocidad=3.0;
+        (*villano).herida=35;
+    }
+}
+
+void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida)
+{
+    if(izq)
+    {
+        (*p).x-=4.0;
+        if(colision((*p).x,(*p).y))
+        {
+            (*p).x+=4.0;
+        }
+    }
+    if(der)
+    {
+        (*p).x+=4.0;
+        if(colision((*p).x,(*p).y))
+        {
+            (*p).x-=4.0;
+        }
+    }
+    *vel_caida+=0.5;
+    (*p).y=*vel_caida;
+    if(colision((*p).x,(*p).y))
+    {
+        if(*vel_caida>0)
+        {
+            (*p).y=((int)((*p).y+30)/TAM_TILE)*TAM_TILE-30.1;
+        }
+        else if (*vel_caida<0) 
+        {
+            (*p).y=((int)(*p).y/TAM_TILE)*TAM_TILE+TAM_TILE+0.1;
+        }
+        *vel_caida=0;
+    }
+}
+
+void mover_enemigos(enemigo ejercito[],int total)
+{
+    for(int i=0;i<total;i++)
+    {
+        if(ejercito[i].velocidad!=0)
+        {
+            ejercito[i].x+=ejercito[i].velocidad;
+            if(colision(ejercito[i].x, ejercito[i].y))
+            {
+                ejercito[i].velocidad=-ejercito[i].velocidad;
+                ejercito[i].x+=ejercito[i].velocidad;
+            }
+        }
+    }
+}
+
+void mover_lasers(lasers mis_lasers[],int maximo)
+{
+    int i;
+    for(i=0;i<maximo;i++)
+    {
+        if(mis_lasers[i].activo) 
+        {
+            mis_lasers[i].x+=mis_lasers[i].velocidad;
+            if(colision(mis_lasers[i].x, mis_lasers[i].y)||mis_lasers[i].x>800||mis_lasers[i].x<0)
+            {
+                mis_lasers[i].activo=false;
+            }
+        }
+    }
+}
+
+void mover_lasers_enemigos(lasers lasers_malos[],int maximo)
+{
+    int i;
+    for(i=0;i<maximo;i++)
+    {
+        if(lasers_malos[i].activo)
+        {
+            lasers_malos[i].x+=lasers_malos[i].velocidad;
+            
+            if(colision(lasers_malos[i].x,lasers_malos[i].y)||lasers_malos[i].x>800||lasers_malos[i].x<0)
+            {
+                lasers_malos[i].activo=false;
+            }
+        }
+    }
 }
