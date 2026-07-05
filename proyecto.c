@@ -13,14 +13,24 @@
 #define columna 20
 #define MAX_ENEMIGOS 4
 #define MAX_LASERS 10
-#define ESTADO_IDLE 0
-#define ESTADO_CAMINAR 1
-#define ESTADO_SALTO 2
-#define ESTADO_DISPARO 3
-#define ESTADO_ATAQUE 4
-#define ESTADO_DANO 5
-#define ESTADO_CORRER 6
-#define ESTADO_RECARGA 7
+#define ANCHO_SPRITE 128.0
+#define ALTO_SPRITE 128.0
+#define TAM_DIBUJO 80.0
+#define AJUSTE_X ((TAM_DIBUJO - 40.0) / 2.0)
+#define AJUSTE_Y (TAM_DIBUJO - 40.0)
+
+enum Estado_Personaje
+{
+    ESTADO_IDLE = 0, 
+    ESTADO_CAMINAR,
+    ESTADO_SALTO,
+    ESTADO_DISPARO,
+    ESTADO_ATAQUE,
+    ESTADO_DANO,
+    ESTADO_CORRER,
+    ESTADO_RECARGA,
+    ESTADO_MUERTE
+};
 
 struct arma_
 {
@@ -31,7 +41,6 @@ struct arma_
 };
 typedef struct arma_ arma;
 
-//INCLUIR A CADA STRUCT QUE LO NECEISITE UN ALTO Y ANCHO
 struct personaje_
 {
     float x;
@@ -86,6 +95,16 @@ struct lasers_
 };
 typedef struct lasers_ lasers;
 
+struct contexto_dibujo_
+{
+    ALLEGRO_BITMAP *fondo;
+    ALLEGRO_BITMAP *img_heroe;
+    ALLEGRO_BITMAP *img_alien;
+    float r_x;
+    int espejo;
+};
+typedef struct contexto_dibujo_ contexto_dibujo;
+
 char mapa[fila][columna];
 int total_enemigos=0;
 personaje heroe;
@@ -95,7 +114,6 @@ lasers laser_protagonista[MAX_LASERS];
 lasers laser_enemigos[MAX_LASERS];
 cofre cofrecito;
 
-//AGREGAR MÁS FUNCIONES PARA ORDENAR EL JUEGO(SEPARAR DIBUJO DE LOGICA)
 void limites_pantalla(float *x, float *y);
 void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base);
 void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial);
@@ -103,26 +121,21 @@ void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida);
 void mover_enemigos(enemigo ejercito[],int total);
 void mover_lasers(lasers mis_lasers[],int maximo);
 void mover_lasers_enemigos(lasers lasers_malos[],int maximo);
-void dibujar_juego(ALLEGRO_BITMAP *fondo,ALLEGRO_BITMAP *img_heroe,float r_x,float ancho,float alto,float tam_dib,float a_x,float a_y);
+void dibujar_juego(contexto_dibujo *graficos);
 bool colision(float x,float y);
 bool cargar_mapa(const char *nombre_archivo);
+bool colision_lasers(float x,float y);
 
 int main()
 {
-    //BORRAR BOOLEANOS Y USAR ALLEGRO_KEYBOARD_STATE PARA DETECTAR TECLAS
     bool corriendo=true;
     bool dibujar=true;
-    bool izquierda=false;
-    bool derecha=false;
     int i,j;
+    int voltear=0;
     float x_bloque,y_bloque;
     float velocidad_caida=0.0;
-    float ancho_casilla=128.0;
-    float alto_casilla=128.0;
     float r_x=0.0;
-    float tamano_dibujo=128.0;
-    float ajuste_x=(tamano_dibujo-40.0)/2.0;
-    float ajuste_y=tamano_dibujo-40.0;
+    float direccion_mirada=1.0;
 
     inicializar_personaje(&heroe,100,4.0);
 
@@ -204,6 +217,11 @@ int main()
         printf("Error fatal: No se encontro 'prota_Idle.png\n");
         return -1;
     }
+    ALLEGRO_BITMAP *img_basico=al_load_bitmap("alien_basico.png");
+    if(!img_basico)
+    {
+        printf("Error fatal: No se encontro 'alien_basico.png'\n");
+    }
 
 
     al_register_event_source(queue, al_get_keyboard_event_source());
@@ -226,20 +244,28 @@ int main()
         {
             switch (evento.keyboard.keycode)
             {
-            case ALLEGRO_KEY_LEFT:
-                izquierda=true;
-                break;
-            
-            case ALLEGRO_KEY_RIGHT:
-                derecha=true;
-                break;
-
             case ALLEGRO_KEY_UP:
                 if(colision(heroe.x,heroe.y+1.0))
                 {
                     velocidad_caida=-9.0;
                 }
                 break;
+
+            case ALLEGRO_KEY_SPACE:
+                heroe.ataque=true;
+                for(i=0;i<MAX_LASERS;i++)
+                {
+                    if(laser_protagonista[i].activo==false)
+                    {
+                        laser_protagonista[i].activo=true;
+                        laser_protagonista[i].x=heroe.x+20;
+                        laser_protagonista[i].y=heroe.y+15;
+                        laser_protagonista[i].velocidad=15.0*direccion_mirada;
+                        break;
+                    }
+                }
+                break;
+
             case ALLEGRO_KEY_ESCAPE:
                 corriendo=false;
                 break;
@@ -250,23 +276,34 @@ int main()
         {
             switch (evento.keyboard.keycode)
             {
-            case ALLEGRO_KEY_LEFT:
-                izquierda=false;
-                break;
-            
-            case ALLEGRO_KEY_RIGHT:
-                derecha=false;
+            case ALLEGRO_KEY_SPACE:
+                heroe.ataque=false;
                 break;
             }
         }
 
         else if(evento.type==ALLEGRO_EVENT_TIMER)
         {
-            mover_personaje(&heroe,izquierda,derecha,&velocidad_caida);
+            ALLEGRO_KEYBOARD_STATE estado_teclado;
+            al_get_keyboard_state(&estado_teclado);
+
+            bool tecla_izq=al_key_down(&estado_teclado, ALLEGRO_KEY_LEFT);
+            bool tecla_der=al_key_down(&estado_teclado,ALLEGRO_KEY_RIGHT);
+
+            if(tecla_der)
+            {
+                direccion_mirada=1.0;
+            }
+            if(tecla_izq)
+            {
+                direccion_mirada=-1.0;
+            }
+
+            mover_personaje(&heroe,tecla_izq,tecla_der,&velocidad_caida);
 
             heroe.estado=ESTADO_IDLE;
 
-            if(izquierda||derecha)
+            if(tecla_izq||tecla_der)
             {
                 heroe.estado=ESTADO_CAMINAR;
             }
@@ -330,12 +367,40 @@ int main()
             {
                 img_actual=img_recarga;
             }
+
+            if(direccion_mirada==-1.0)
+            {
+                voltear=ALLEGRO_FLIP_HORIZONTAL;
+            }
+            else
+            {
+                voltear=0;
+            }
+
+            contexto_dibujo mis_graficos;
+            mis_graficos.fondo=fondo_nivel1;
+            mis_graficos.img_heroe=img_actual;
+            mis_graficos.img_alien=img_basico;
+            mis_graficos.r_x=r_x;
+            mis_graficos.espejo=voltear;
             
-            dibujar_juego(fondo_nivel1,img_actual,r_x,ancho_casilla,alto_casilla,tamano_dibujo,ajuste_x,ajuste_y);
+            dibujar_juego(&mis_graficos);
+
         }
 
     }
 
+    al_destroy_bitmap(fondo_nivel1);
+    al_destroy_bitmap(img_ataque);
+    al_destroy_bitmap(img_dano);
+    al_destroy_bitmap(img_caminar);
+    al_destroy_bitmap(img_correr);
+    al_destroy_bitmap(img_disparo);
+    al_destroy_bitmap(img_muerte);
+    al_destroy_bitmap(img_recarga);
+    al_destroy_bitmap(img_salto);
+    al_destroy_bitmap(img_idle);
+    al_destroy_bitmap(img_basico);
     al_destroy_timer(timer);
     al_destroy_event_queue(queue);
     al_destroy_display(display);
@@ -343,7 +408,6 @@ int main()
     return 0;
 }
     
-
 void limites_pantalla(float *x, float *y){
     if(*x < 0)
     {
@@ -564,7 +628,7 @@ void mover_lasers(lasers mis_lasers[],int maximo)
         {
             mis_lasers[i].x+=mis_lasers[i].velocidad;
 
-            if(colision(mis_lasers[i].x, mis_lasers[i].y)||mis_lasers[i].x>800||mis_lasers[i].x<0)
+            if(colision_lasers(mis_lasers[i].x, mis_lasers[i].y)||mis_lasers[i].x>800||mis_lasers[i].x<0)
             {
                 mis_lasers[i].activo=false;
             }
@@ -582,7 +646,7 @@ void mover_lasers_enemigos(lasers lasers_malos[],int maximo)
         {
             lasers_malos[i].x+=lasers_malos[i].velocidad;
             
-            if(colision(lasers_malos[i].x,lasers_malos[i].y)||lasers_malos[i].x>800||lasers_malos[i].x<0)
+            if(colision_lasers(lasers_malos[i].x,lasers_malos[i].y)||lasers_malos[i].x>800||lasers_malos[i].x<0)
             {
                 lasers_malos[i].activo=false;
             }
@@ -590,13 +654,15 @@ void mover_lasers_enemigos(lasers lasers_malos[],int maximo)
     }
 }
 
-void dibujar_juego(ALLEGRO_BITMAP *fondo,ALLEGRO_BITMAP *img_heroe,float r_x,float ancho,float alto,float tam_dib,float a_x,float a_y)
+void dibujar_juego(contexto_dibujo *graficos)
 {
     int i,j;
     float x_bloque,y_bloque;
+    float ajuste_alien_x = (64.0 - 40.0) / 2.0;
+    float ajuste_alien_y = 10.0;
 
     al_clear_to_color(al_map_rgb(20, 30, 50));
-    al_draw_scaled_bitmap(fondo,0,0,al_get_bitmap_width(fondo),al_get_bitmap_height(fondo),0,0,columna*TAM_TILE,fila*TAM_TILE,0);
+    al_draw_scaled_bitmap((*graficos).fondo,0,0,al_get_bitmap_width((*graficos).fondo),al_get_bitmap_height((*graficos).fondo),0,0,columna*TAM_TILE,fila*TAM_TILE,0);
 
     for(i=0;i<fila;i++)
     {
@@ -612,16 +678,19 @@ void dibujar_juego(ALLEGRO_BITMAP *fondo,ALLEGRO_BITMAP *img_heroe,float r_x,flo
         }
     }
 
-    if(heroe.vida>0&&img_heroe!=NULL)
+    if(heroe.vida>0&&(*graficos).img_heroe!=NULL)
     {
-        al_draw_scaled_bitmap(img_heroe,r_x,0,ancho,alto,heroe.x-a_x,heroe.y-a_y,tam_dib,tam_dib,0);
+        al_draw_scaled_bitmap((*graficos).img_heroe,(*graficos).r_x,0,ANCHO_SPRITE,ALTO_SPRITE,heroe.x-AJUSTE_X,heroe.y-AJUSTE_Y,TAM_DIBUJO,TAM_DIBUJO,(*graficos).espejo);
     }
 
     for(i=0;i<total_enemigos;i++)
     {
         if(enemigos[i].tipo=='2') 
         {
-            al_draw_filled_rectangle(enemigos[i].x,enemigos[i].y,enemigos[i].x+40,enemigos[i].y+40, al_map_rgb(50, 200, 50));
+            if((*graficos).img_alien != NULL)
+            {
+                al_draw_scaled_bitmap((*graficos).img_alien, 0, 0, 64, 64, enemigos[i].x - ajuste_alien_x, enemigos[i].y - ajuste_alien_y, 64, 64, 0);
+            }
         }
 
         if(enemigos[i].tipo=='5') 
@@ -635,5 +704,49 @@ void dibujar_juego(ALLEGRO_BITMAP *fondo,ALLEGRO_BITMAP *img_heroe,float r_x,flo
         }
     }
 
+    for(i=0;i<MAX_LASERS;i++)
+    {
+        if(laser_protagonista[i].activo)
+        {
+            al_draw_filled_rectangle(laser_protagonista[i].x,laser_protagonista[i].y,laser_protagonista[i].x+15,laser_protagonista[i].y+5,al_map_rgb(255,0,0));
+        }
+    }
+
+
     al_flip_display();
+}
+
+bool colision_lasers(float x,float y)
+{
+    int izq=x/TAM_TILE;
+    int der=(x+15)/TAM_TILE;
+    int arr=y/TAM_TILE;
+    int aba=(y+5)/TAM_TILE;
+
+    if(izq<0||der>=20||arr<0||aba>=15)
+    {
+        return true;
+    }
+
+    if (mapa[arr][izq]=='1') 
+    {
+        return true;
+    }
+
+    if (mapa[arr][der]=='1') 
+    {
+        return true;
+    }
+
+    if (mapa[aba][izq]=='1') 
+    {
+        return true;
+    }
+
+    if (mapa[aba][der]=='1') 
+    {
+        return true;
+    }
+
+    return false;
 }
