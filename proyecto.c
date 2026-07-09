@@ -1171,10 +1171,10 @@ bool cargar_imagenes(recursos *imgs)
         return false; 
     }
 
-    (*imgs).textura_luna=al_load_bitmap("tiles_lunar.png");
+    (*imgs).textura_luna=al_load_bitmap("tile_lunar.png");
     if(!(*imgs).textura_luna) 
     { 
-        printf("Error fatal: No se encontro 'tiles_lunar.png'\n"); 
+        printf("Error fatal: No se encontro 'tile_lunar.png'\n"); 
         return false; 
     }
 
