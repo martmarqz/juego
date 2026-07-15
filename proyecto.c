@@ -3,7 +3,7 @@
 #include<stdbool.h>
 #include<allegro5/allegro.h> 
 #include<allegro5/allegro_image.h> 
-#include<allegro5/allegro_font.h> //fuentes
+#include<allegro5/allegro_font.h> 
 #include<allegro5/allegro_ttf.h> //fuentes ttf
 #include<allegro5/allegro_primitives.h>
 #include<allegro5/allegro_audio.h> 
@@ -20,9 +20,11 @@
 #define TAM_DIBUJO 80.0
 #define AJUSTE_X ((TAM_DIBUJO - 40.0) / 2.0)
 #define AJUSTE_Y (TAM_DIBUJO - 40.0)
-#define MAX_ITEMS 10
+#define MAX_ITEMS 60
 #define ANCHO_TEXTURA_LUNAR 10
 #define ALTO_TEXTURA_LUNAR 10
+#define MAX_COSAS 5
+#define MAX_TRAMPAS 15
 
 enum Estado_Personaje
 {
@@ -42,7 +44,10 @@ enum Tipo_Item
     ITEM_VIDA=1,
     ITEM_MUNICION,
     ITEM_ENERGIA,
-    ITEM_LLAVE
+    ITEM_LLAVE_FINAL,
+    ITEM_LLAVE_COMUN,
+    ITEM_VENENO,
+    ITEM_PUNTOS
 };
 
 struct arma_
@@ -53,6 +58,16 @@ struct arma_
     bool en_uso;
 };
 typedef struct arma_ arma;
+
+struct proyectil_
+{
+    float x;
+    float y;
+    float velocidad_x;
+    float velocidad_y;
+    bool activo;
+};
+typedef struct proyectil_ proyectil;
 
 struct personaje_
 {
@@ -66,8 +81,11 @@ struct personaje_
     int cuadro_actual;
     int contador_animacion;
     int municion;
+    int inventario[MAX_COSAS];
+    int puntos;
     bool ataque;
     arma armas;
+    proyectil proyectiles[MAX_ITEMS];
 };
 typedef struct personaje_ personaje;
 
@@ -91,14 +109,13 @@ struct enemigo_
 };
 typedef struct enemigo_ enemigo;
 
-struct cofre_
+struct trampas_
 {
     float x;
     float y;
-    bool abierto;
-    int contenido;
+    bool activado;
 };
-typedef struct cofre_ cofre;
+typedef struct trampas_ trampas;
 
 struct item_
 {
@@ -142,28 +159,38 @@ struct recursos_
     ALLEGRO_BITMAP *alien5_ataque;
     ALLEGRO_BITMAP *alien5_dead;
     ALLEGRO_BITMAP *veneno;
-    ALLEGRO_BITMAP *llave;
+    ALLEGRO_BITMAP *llave_final;
+    ALLEGRO_BITMAP *llave_basica;
+    ALLEGRO_BITMAP *portal;
+    ALLEGRO_BITMAP *punto;
+    ALLEGRO_BITMAP *puas;
 };
 typedef struct recursos_ recursos;
 
 struct contexto_dibujo_
 {
     int espejo;
+    int cuadro_moneda;
+    int cuadro_portal;
     float r_x;
     recursos *catalogo;
     ALLEGRO_BITMAP *img_heroe; 
+    ALLEGRO_FONT *fuente;
 };
 typedef struct contexto_dibujo_ contexto_dibujo;
 
 char mapa[fila][columna];
 int total_enemigos=0;
+float x_portal=0;
+float y_portal=0;
+bool portal_activo = false;
 personaje heroe;
 personaje amigo;
 enemigo enemigos[MAX_ENEMIGOS];
 lasers laser_protagonista[MAX_LASERS];
 lasers laser_enemigos[MAX_LASERS];
-cofre cofrecito;
 item mis_items[MAX_ITEMS];
+trampas mis_trampas[MAX_TRAMPAS];
 
 void limites_pantalla(float *x, float *y);
 void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base);
@@ -174,6 +201,8 @@ void mover_lasers(lasers mis_lasers[],int maximo);
 void mover_lasers_enemigos(lasers lasers_malos[],int maximo);
 void dibujar_juego(contexto_dibujo *graficos);
 void recolectar_items(item lista_items[],int maximo);
+void mover_proyectiles(proyectil mis_proyectiles[], int maximo);
+bool colision_proyectil(float x,float y);
 bool colision(float x,float y);
 bool cargar_mapa(const char *nombre_archivo);
 bool colision_lasers(float x,float y);
@@ -183,9 +212,13 @@ int main()
 {
     bool corriendo=true;
     bool dibujar=true;
-    int i,j;
+    int i,j,k,casilla_x,casilla_y;
     int voltear=0;
     int max_cuadros_heroe=5;
+    int cuadro_animacion_moneda=0;
+    int contador_animacion_moneda=0;
+    int cuadro_animacion_portal=0;
+    int contador_animacion_portal=0;
     float x_bloque,y_bloque;
     float velocidad_caida=0.0;
     float r_x=0.0;
@@ -207,6 +240,8 @@ int main()
     al_init_primitives_addon();
     al_install_keyboard(); 
     al_init_image_addon();
+
+    ALLEGRO_FONT *fuente_texto=al_create_builtin_font();
 
     recursos mis_imagenes;
     if(!cargar_imagenes(&mis_imagenes))
@@ -260,13 +295,37 @@ int main()
                     }
                 }
                 break;
+            
+            case ALLEGRO_KEY_V:
+                int bolsillo, k;
+                for(bolsillo=0; bolsillo<MAX_COSAS; bolsillo++) 
+                {
+                    if(heroe.inventario[bolsillo] == ITEM_VENENO)
+                    {
+                        for(k=0; k<MAX_ITEMS; k++) 
+                        {
+                            if(!heroe.proyectiles[k].activo) 
+                            {
+                                heroe.proyectiles[k].activo=true;
+                                heroe.proyectiles[k].x=heroe.x+20;
+                                heroe.proyectiles[k].y=heroe.y+10;
+                                heroe.proyectiles[k].velocidad_x=12.0*direccion_mirada;
+                                heroe.proyectiles[k].velocidad_y=-8.0;
+                                heroe.inventario[bolsillo] = 0;
+                                printf("Veneno lanzado! Se vació el bolsillo\n");
+                                break; 
+                            }
+                        }
+                        break; 
+                    }
+                }
+                break;
 
             case ALLEGRO_KEY_ESCAPE:
                 corriendo=false;
                 break;
             }
         }
-
         else if(evento.type==ALLEGRO_EVENT_KEY_UP)
         {
             switch (evento.keyboard.keycode)
@@ -352,7 +411,35 @@ int main()
             mover_enemigos(enemigos,total_enemigos);
             mover_lasers(laser_protagonista,MAX_LASERS);
             mover_lasers_enemigos(laser_enemigos,MAX_LASERS);
+            mover_proyectiles(heroe.proyectiles,MAX_ITEMS);
             recolectar_items(mis_items,MAX_ITEMS);
+
+            for(i=0;i<20;i++)
+            {
+                if(mis_trampas[i].activado)
+                {
+                    if(heroe.x<mis_trampas[i].x+TAM_TILE&&heroe.x+40>mis_trampas[i].x&&heroe.y<mis_trampas[i].y+TAM_TILE&&heroe.y+40>mis_trampas[i].y)
+                    {
+                        if(heroe.tiempo_dano==0)
+                        {
+                            heroe.vida-=20;
+                            heroe.tiempo_dano=30;
+                            velocidad_caida=-6.0; 
+                            printf("Caiste en las púas! Vida: %d\n",heroe.vida);
+                        }
+                    }
+                }
+            }
+
+            if(portal_activo)
+            {
+                if(heroe.x<x_portal+TAM_TILE&&heroe.x+40>x_portal&&heroe.y<y_portal+TAM_TILE&&heroe.y+40>y_portal-TAM_TILE)
+                {
+                    printf("Portal alcanzado! Nivel completado.\n");
+                    corriendo=false;
+                }
+            }
+
             dibujar=true;
         }
 
@@ -413,6 +500,9 @@ int main()
             mis_graficos.img_heroe=img_actual;
             mis_graficos.r_x=r_x;
             mis_graficos.espejo=voltear;
+            mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
+            mis_graficos.cuadro_portal=cuadro_animacion_portal;
+            mis_graficos.fuente=fuente_texto;
             
             dibujar_juego(&mis_graficos);
         }
@@ -434,6 +524,7 @@ int main()
     al_destroy_bitmap(mis_imagenes.textura_luna);
     al_destroy_bitmap(mis_imagenes.textura_metal);
     al_destroy_bitmap(mis_imagenes.alien5_idle);
+    al_destroy_font(fuente_texto);
     al_destroy_timer(timer);
     al_destroy_event_queue(queue);
     al_destroy_display(display);
@@ -497,7 +588,7 @@ bool colision(float x,float y)
 
 bool cargar_mapa(const char *nombre_archivo)
 {
-    int i,j;
+    int i,j,k;
     FILE *archivo=fopen(nombre_archivo, "r");
 
     if(archivo==NULL)
@@ -535,14 +626,78 @@ bool cargar_mapa(const char *nombre_archivo)
                 amigo.y=TAM_TILE*i;
                 mapa[i][j]=0;
             }
-
-            else if(mapa[i][j]=='c')
+            else if(mapa[i][j]=='v')
             {
-                cofrecito.x=TAM_TILE*j;
-                cofrecito.y=TAM_TILE*i;
+                for(k=0;k<MAX_ITEMS;k++)
+                {
+                    if(!mis_items[k].activo)
+                    {
+                        mis_items[k].activo=true;
+                        mis_items[k].tipo=ITEM_VENENO;
+                        mis_items[k].x=TAM_TILE*j+5;
+                        mis_items[k].y=TAM_TILE*i+10;
+                        mis_items[k].velocidad_y=0;
+                        mis_items[k].valor=20;
+                        break;
+                    }
+                }
                 mapa[i][j]=0;
             }
-            
+            else if(mapa[i][j]=='k')
+            {
+                for(k=0;k<MAX_ITEMS;k++)
+                {
+                    if(!mis_items[k].activo)
+                    {
+                        mis_items[k].activo=true;
+                        mis_items[k].tipo=ITEM_LLAVE_COMUN;
+                        mis_items[k].x=TAM_TILE*j+5;
+                        mis_items[k].y=TAM_TILE*i+10;
+                        mis_items[k].velocidad_y=0;
+                        mis_items[k].valor=1;
+                        break;
+                    }
+                }
+                mapa[i][j]=0;
+            }
+            else if(mapa[i][j]=='p')
+            {
+                for(k=0;k<MAX_TRAMPAS;k++)
+                {
+                    if(!mis_trampas[k].activado)
+                    {
+                        mis_trampas[k].activado=true;
+                        mis_trampas[k].x=TAM_TILE*j;
+                        mis_trampas[k].y=TAM_TILE*i;
+                        break;
+                    }
+                }
+                mapa[i][j]=0;
+            }
+            else if(mapa[i][j]=='O') 
+            {
+                portal_activo = true;
+                x_portal = TAM_TILE * j;
+                y_portal = TAM_TILE * i;
+                mapa[i][j] = 0; 
+            }
+            else if(mapa[i][j]=='.') 
+            {
+                for(k=0; k<MAX_ITEMS; k++)
+                {
+                    if(!mis_items[k].activo)
+                    {
+                        mis_items[k].activo=true;
+                        mis_items[k].tipo=ITEM_PUNTOS;
+                        mis_items[k].x=TAM_TILE*j+5;
+                        mis_items[k].y=TAM_TILE*i+10;
+                        mis_items[k].velocidad_y=0;
+                        mis_items[k].valor=10; 
+                        break;
+                    }
+                }
+                mapa[i][j]=0;
+            }
         }
     }
 
@@ -552,6 +707,8 @@ bool cargar_mapa(const char *nombre_archivo)
 
 void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base)
 {
+    int i;
+
     (*entidad).velocidad=velocidad_base;
     (*entidad).vida=vida_base;
     (*entidad).energia=100;
@@ -559,6 +716,15 @@ void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base
     (*entidad).tiempo_dano=0;
     (*entidad).contador_animacion=0;
     (*entidad).cuadro_actual=0;
+    (*entidad).puntos=0;
+    for(i=0;i<MAX_COSAS;i++)
+    {
+        (*entidad).inventario[i] = 0;
+    }
+    for(i=0;i<MAX_ITEMS;i++)
+    {
+        (*entidad).proyectiles[i].activo=false;
+    }
 }
 
 void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial)
@@ -936,13 +1102,14 @@ void mover_lasers(lasers mis_lasers[],int maximo)
                 {
                     if(enemigos[j].vida>0)
                     {
-                        if(mis_lasers[i].x<enemigos[j].x+40&&mis_lasers[i].x+15>enemigos[j].x&&mis_lasers[i].y<enemigos[j].y+40&&mis_lasers[i].y + 5 > enemigos[j].y)
+                        if(mis_lasers[i].x<enemigos[j].x+40&&mis_lasers[i].x+15>enemigos[j].x&&mis_lasers[i].y<enemigos[j].y+40&&mis_lasers[i].y+5>enemigos[j].y)
                         {
                             enemigos[j].vida-=25;
                             mis_lasers[i].activo=false;
                             printf("Impacto al enemigo, vida restante: %d\n",enemigos[j].vida);
                             if(enemigos[j].vida<=0&&enemigos[j].tipo=='5')
                             {
+                                heroe.puntos+=50;
                                 for(k=0;k<MAX_ITEMS;k++)
                                 {
                                     if(!mis_items[k].activo)
@@ -1000,7 +1167,7 @@ void mover_lasers_enemigos(lasers lasers_malos[],int maximo)
 
 void dibujar_juego(contexto_dibujo *graficos)
 {
-    int i,j,ancho_alien5,alto_alien5,recorte_x,recorte_y;
+    int i,j,ancho_alien5,alto_alien5,recorte_x,recorte_y,recorte_portal_x,recorte_moneda_x;
     int espejo_enemigo=0;
     float x_bloque,y_bloque,ajuste_y_alien5;
     float ancho_dibujo=60.0;
@@ -1033,6 +1200,14 @@ void dibujar_juego(contexto_dibujo *graficos)
                     al_draw_scaled_bitmap((*imgs).textura_luna,209,359,ANCHO_TEXTURA_LUNAR,ALTO_TEXTURA_LUNAR,x_bloque,y_bloque,TAM_TILE,TAM_TILE, 0);
                 }
             }
+        }
+    }
+
+    for(i=0;i<20;i++)
+    {
+        if(mis_trampas[i].activado&&(*imgs).puas!=NULL)
+        {
+            al_draw_scaled_bitmap((*imgs).puas,0,0,al_get_bitmap_width((*imgs).puas),al_get_bitmap_height((*imgs).puas),mis_trampas[i].x,mis_trampas[i].y,TAM_TILE,TAM_TILE,0);
         }
     }
 
@@ -1088,7 +1263,7 @@ void dibujar_juego(contexto_dibujo *graficos)
 
         if(enemigos[i].tipo=='5') 
         {
-            ajuste_alien_y=ajuste_y;
+            ajuste_y_alien5=ajuste_y;
             ALLEGRO_BITMAP *img_a_dibujar=NULL;
             if (enemigos[i].estado==ESTADO_IDLE)
             {
@@ -1121,6 +1296,7 @@ void dibujar_juego(contexto_dibujo *graficos)
 
             if(img_a_dibujar!=NULL)
             {
+                espejo_enemigo=0;
                 if(enemigos[i].direccion_mirada==-1.0)
                 {
                     espejo_enemigo=ALLEGRO_FLIP_HORIZONTAL;
@@ -1159,7 +1335,40 @@ void dibujar_juego(contexto_dibujo *graficos)
             {
                 al_draw_scaled_bitmap((*imgs).pocion_vida,0,0,al_get_bitmap_width((*imgs).pocion_vida),al_get_bitmap_height((*imgs).pocion_vida),mis_items[i].x,mis_items[i].y,30,30,0);
             }
+            else if(mis_items[i].tipo==ITEM_VENENO&&(*imgs).veneno!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).veneno,0,0,al_get_bitmap_width((*imgs).veneno),al_get_bitmap_height((*imgs).veneno),mis_items[i].x, mis_items[i].y,30,30,0);
+            }
+            else if(mis_items[i].tipo==ITEM_LLAVE_COMUN&&(*imgs).llave_basica!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).llave_basica,0,0,al_get_bitmap_width((*imgs).llave_basica),al_get_bitmap_height((*imgs).llave_basica),mis_items[i].x, mis_items[i].y,30,30,0);
+            }
+            else if(mis_items[i].tipo==ITEM_PUNTOS&&(*imgs).punto!=NULL)
+            {
+                recorte_moneda_x=(*graficos).cuadro_moneda*563; 
+                al_draw_scaled_bitmap((*imgs).punto,recorte_moneda_x,0,563,565,mis_items[i].x,mis_items[i].y,25,25,0);
+            }
         }
+    }
+
+    for(i=0;i<MAX_ITEMS;i++)
+    {
+        if(heroe.proyectiles[i].activo&&(*imgs).veneno!=NULL)
+        {
+            al_draw_scaled_bitmap((*imgs).veneno,0,0,al_get_bitmap_width((*imgs).veneno),al_get_bitmap_height((*imgs).veneno),heroe.proyectiles[i].x,heroe.proyectiles[i].y,30,30,0);
+        }
+    }
+
+    if(portal_activo&&(*imgs).portal!=NULL)
+    {
+        recorte_portal_x=(*graficos).cuadro_portal*32; 
+        al_draw_scaled_bitmap((*imgs).portal,recorte_portal_x,0,32,32,x_portal,y_portal-TAM_TILE,TAM_TILE,TAM_TILE*2,0);
+    }
+
+    if((*graficos).fuente!=NULL)
+    {
+        al_draw_textf((*graficos).fuente,al_map_rgb(255,255,255),20,20,0,"VIDA: %d",heroe.vida);
+        al_draw_textf((*graficos).fuente,al_map_rgb(255,215,0),20,50,0,"PUNTOS: %d",heroe.puntos);
     }
 
     al_flip_display();
@@ -1202,7 +1411,8 @@ bool colision_lasers(float x,float y)
 
 void recolectar_items(item lista_items[],int maximo)
 {
-    int i;
+    int i,j;
+    bool guardado;
     for(i=0;i<maximo;i++)
     {
         if(lista_items[i].activo)
@@ -1225,15 +1435,116 @@ void recolectar_items(item lista_items[],int maximo)
                     }
                     printf("¡Vida recogida! Vida actual: %d\n", heroe.vida);
                 }
-
                 else if(lista_items[i].tipo==ITEM_MUNICION)
                 {
                     printf("¡Munición recogida!\n");
+                }
+                else if(lista_items[i].tipo==ITEM_VENENO||lista_items[i].tipo==ITEM_LLAVE_COMUN)
+                {
+                    guardado=false;
+                    for(j=0;j<MAX_COSAS;j++)
+                    {
+                        if(heroe.inventario[j]==0)
+                        {
+                            heroe.inventario[j] = lista_items[i].tipo; 
+                            
+                            if(lista_items[i].tipo==ITEM_VENENO) 
+                            {
+                                printf("Veneno guardado en el bolsillo %d!\n",j);
+                            }
+                            if(lista_items[i].tipo==ITEM_LLAVE_COMUN) 
+                            {
+                                printf("Llave guardada en el bolsillo %d!\n",j);
+                            }
+                            
+                            lista_items[i].activo=false; 
+                            guardado=true;
+                            break;
+                        }
+
+                    }
+                    if(!guardado)
+                    {
+                        printf("Inventario lleno!\n");
+                    }
+                }
+                else if(lista_items[i].tipo==ITEM_PUNTOS)
+                {
+                    heroe.puntos += lista_items[i].valor;
+                    printf("Punto recogido! Puntuación: %d\n",heroe.puntos);
                 }
                 lista_items[i].activo = false;
             }
         }
     }
+}
+
+void mover_proyectiles(proyectil mis_proyectiles[], int maximo)
+{
+    int i,j;
+    for(i=0;i<maximo;i++)
+    {
+        if(mis_proyectiles[i].activo)
+        {
+            mis_proyectiles[i].x+=mis_proyectiles[i].velocidad_x;
+            mis_proyectiles[i].velocidad_y+=0.5; 
+            mis_proyectiles[i].y+=mis_proyectiles[i].velocidad_y;
+
+            if(mis_proyectiles[i].x>ancho_pantalla||mis_proyectiles[i].x<0||colision_proyectil(mis_proyectiles[i].x,mis_proyectiles[i].y))
+            {
+                mis_proyectiles[i].activo=false;
+            }
+
+            if(mis_proyectiles[i].activo)
+            {
+                for(j=0;j<total_enemigos;j++)
+                {
+                    if(enemigos[j].vida>0)
+                    {
+                        if(mis_proyectiles[i].x<enemigos[j].x+40&&mis_proyectiles[i].x+30>enemigos[j].x&&mis_proyectiles[i].y<enemigos[j].y+40&&mis_proyectiles[i].y+30>enemigos[j].y)
+                        {
+                            enemigos[j].vida -= 40; 
+                            mis_proyectiles[i].activo = false;
+                            printf("Impacto! Vida enemigo: %d\n", enemigos[j].vida);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+bool colision_proyectil(float x,float y)
+{
+    int izq=x/TAM_TILE;
+    int der=(x+25)/TAM_TILE; 
+    int arr=y/TAM_TILE;
+    int aba=(y+25)/TAM_TILE;
+
+    if(izq<0||der>=columna||arr<0||aba>=fila)
+    {
+        return true;
+    }
+
+    if (mapa[arr][izq]=='1') 
+    {
+        return true;
+    }
+    if (mapa[arr][der]=='1') 
+    {
+        return true;
+    }
+    if (mapa[aba][izq]=='1') 
+    {
+        return true;
+    }
+    if (mapa[aba][der]=='1') 
+    {
+        return true;
+    }
+
+    return false;
 }
 
 bool cargar_imagenes(recursos *imgs)
@@ -1368,6 +1679,41 @@ bool cargar_imagenes(recursos *imgs)
     if(!(*imgs).veneno)
     {
         printf("Error fata: No se encontro 'veneno.png'\n");
+        return false;
+    }
+
+    (*imgs).llave_basica=al_load_bitmap("llave_comun.png");
+    if(!(*imgs).llave_basica)
+    {
+        printf("Error fatal: No se encontro'llave_comun.png'\n");
+        return false;
+    }
+
+    (*imgs).llave_final=al_load_bitmap("llave_final.png");
+    if(!(*imgs).llave_final)
+    {
+        printf("Error fatal: No se encontro 'llave_final.png'\n");
+        return false;
+    }
+
+    (*imgs).puas=al_load_bitmap("puas.png");
+    if(!(*imgs).puas)
+    {
+        printf("Error fatal: No se encontro 'puas.png'\n");
+        return false;
+    }
+
+    (*imgs).portal=al_load_bitmap("portal.png");
+    if(!(*imgs).portal)
+    {
+        printf("Error fatal: No se encontro 'portal.png'\n");
+        return false;
+    }
+
+    (*imgs).punto=al_load_bitmap("point.png");
+    if(!(*imgs).punto)
+    {
+        printf("Error fatal: No se encontro 'point.png'\n");
         return false;
     }
 
