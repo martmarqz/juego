@@ -18,8 +18,8 @@
 #define ANCHO_SPRITE 128.0
 #define ALTO_SPRITE 128.0
 #define TAM_DIBUJO 80.0
-#define AJUSTE_X ((TAM_DIBUJO - 40.0) / 2.0)
-#define AJUSTE_Y (TAM_DIBUJO - 40.0)
+#define AJUSTE_X ((TAM_DIBUJO-40.0)/2.0)
+#define AJUSTE_Y (TAM_DIBUJO-40.0)
 #define MAX_ITEMS 150
 #define ANCHO_TEXTURA_LUNAR 10
 #define ALTO_TEXTURA_LUNAR 10
@@ -102,6 +102,7 @@ struct enemigo_
     int municion;
     float velocidad;
     float direccion_mirada;
+    float velocidad_y;
     bool ataque;
     municion laser_enemigos[MAX_LASERS];
 };
@@ -143,10 +144,7 @@ struct recursos_
     ALLEGRO_BITMAP *textura_luna;
     ALLEGRO_BITMAP *textura_metal;
     ALLEGRO_BITMAP *pocion_vida;
-    ALLEGRO_BITMAP *alien5_idle;
-    ALLEGRO_BITMAP *alien5_caminar;
-    ALLEGRO_BITMAP *alien5_ataque;
-    ALLEGRO_BITMAP *alien5_dead;
+    ALLEGRO_BITMAP *alien5;
     ALLEGRO_BITMAP *veneno;
     ALLEGRO_BITMAP *llave_final;
     ALLEGRO_BITMAP *llave_roja;
@@ -160,6 +158,7 @@ struct recursos_
     ALLEGRO_BITMAP *llave_amarilla;
     ALLEGRO_BITMAP *door;
     ALLEGRO_BITMAP *intenemy;
+    ALLEGRO_BITMAP *checkpoint;
 };
 typedef struct recursos_ recursos;
 
@@ -169,6 +168,7 @@ struct contexto_dibujo_
     int cuadro_moneda;
     int cuadro_portal;
     float r_x;
+    float movimiento_items;
     bool portal_abierto;
     recursos *catalogo;
     municion *lasers_prota;
@@ -188,7 +188,6 @@ enemigo enemigos[MAX_ENEMIGOS];
 item mis_items[MAX_ITEMS];
 trampas mis_trampas[MAX_TRAMPAS];
 
-void limites_pantalla(float *x, float *y);
 void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base);
 void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial);
 void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida);
@@ -220,6 +219,8 @@ int main()
     float velocidad_caida=0.0;
     float r_x=0.0;
     float direccion_mirada=1.0;
+    float movimiento_y_items=0.0;
+    float velocidad_flotacion=0.25;
     municion laser_protagonista[MAX_LASERS];
 
     inicializar_personaje(&heroe,100,4.0);
@@ -381,6 +382,24 @@ int main()
                 direccion_mirada=-1.0;
             }
 
+            contador_animacion_moneda++;
+            if(contador_animacion_moneda>=5)
+            {
+                contador_animacion_moneda=0;
+                cuadro_animacion_moneda++;
+
+                if(cuadro_animacion_moneda>=10) 
+                {
+                    cuadro_animacion_moneda=0;
+                }
+            }
+
+            movimiento_y_items+=velocidad_flotacion;
+            if(movimiento_y_items>6.0||movimiento_y_items<0.0) 
+            {
+                velocidad_flotacion=-velocidad_flotacion;
+            }
+
             if(heroe.vida>0)
             {
                 mover_personaje(&heroe,tecla_izq,tecla_der,&velocidad_caida);
@@ -531,7 +550,7 @@ int main()
                             {
                                 if(mapa[fil][col]=='D') 
                                 {
-                                    mapa[fil][col]='0';
+                                    mapa[fil][col]='A';
                                 }
                             }
                         }
@@ -638,6 +657,8 @@ int main()
             mis_graficos.cuadro_portal=cuadro_animacion_portal;
             mis_graficos.portal_abierto=portal_abierto;
             mis_graficos.lasers_prota=laser_protagonista;
+            mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
+            mis_graficos.movimiento_items=movimiento_y_items;
             mis_graficos.fuente=fuente_texto;
             
             dibujar_juego(&mis_graficos);
@@ -659,7 +680,20 @@ int main()
     al_destroy_bitmap(mis_imagenes.pocion_vida);
     al_destroy_bitmap(mis_imagenes.textura_luna);
     al_destroy_bitmap(mis_imagenes.textura_metal);
-    al_destroy_bitmap(mis_imagenes.alien5_idle);
+    al_destroy_bitmap(mis_imagenes.alien5);
+    al_destroy_bitmap(mis_imagenes.veneno);
+    al_destroy_bitmap(mis_imagenes.llave_final);
+    al_destroy_bitmap(mis_imagenes.llave_roja);
+    al_destroy_bitmap(mis_imagenes.llave_verde);
+    al_destroy_bitmap(mis_imagenes.llave_azul);
+    al_destroy_bitmap(mis_imagenes.llave_amarilla);
+    al_destroy_bitmap(mis_imagenes.portal);
+    al_destroy_bitmap(mis_imagenes.punto);
+    al_destroy_bitmap(mis_imagenes.puas);
+    al_destroy_bitmap(mis_imagenes.municion);
+    al_destroy_bitmap(mis_imagenes.palanca);
+    al_destroy_bitmap(mis_imagenes.door);
+    al_destroy_bitmap(mis_imagenes.intenemy);
     al_destroy_font(fuente_texto);
     al_destroy_timer(timer);
     al_destroy_event_queue(queue);
@@ -667,28 +701,14 @@ int main()
 
     return 0;
 }
-    
-void limites_pantalla(float *x, float *y){
-    if(*x<0)
-    {
-        *x=0;
-    }
-    if(*x>ancho_pantalla)
-    {
-        *x=ancho_pantalla;
-    }
-    if(*y<0)
-    {
-        *y=0;
-    }
-    if(*y>alto_pantalla)
-    {
-        *y=alto_pantalla;
-    }
-}
 
 bool colision(float x,float y)
 {
+    if(x<0||x+39>=ancho_pantalla)
+    {
+        return true;
+    }
+
     int izq=x/TAM_TILE;
     int der=(x+39)/TAM_TILE;
     int arr=y/TAM_TILE;
@@ -925,6 +945,7 @@ void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_
     (*villano).tipo=tipo_char;
     (*villano).x=x_inicial;
     (*villano).y=y_inicial;
+    (*villano).velocidad_y=0.0;
     (*villano).ataque=false;
     (*villano).estado=ESTADO_CAMINAR;
     (*villano).cuadro_actual=0;
@@ -1011,22 +1032,21 @@ void mover_enemigos(enemigo ejercito[],int total)
     int max_cuadros=8;
     int limite_cuadros=8;
     int i,j,frente_x,pies_y; 
-    float dist_x_abs;
-    float dist_y_abs;
+    float dist_x_abs,dist_y_abs,dist_x,dist_y;
     bool puede_moverse;
 
-    for(i = 0; i < total; i++)
+    for(i=0;i<total;i++)
     {
-        if(ejercito[i].vida <= 0) 
+        if(ejercito[i].vida<=0) 
         {
-            ejercito[i].estado = ESTADO_MUERTE;
-            ejercito[i].velocidad = 0; 
-            ejercito[i].ataque = false;
+            ejercito[i].estado=ESTADO_MUERTE;
+            ejercito[i].velocidad=0; 
+            ejercito[i].ataque=false;
         }
         else
         {
-            float dist_x=heroe.x-ejercito[i].x;
-            float dist_y=heroe.y-ejercito[i].y;
+            dist_x=heroe.x-ejercito[i].x;
+            dist_y=heroe.y-ejercito[i].y;
 
             if (dist_x>0)
             {
@@ -1048,7 +1068,7 @@ void mover_enemigos(enemigo ejercito[],int total)
 
             bool heroe_en_rango=(heroe.vida>0&&dist_x_abs<=ejercito[i].alcance&&dist_y_abs<40.0);
 
-            if(ejercito[i].tipo=='2'||ejercito[i].tipo=='9')
+            if(ejercito[i].tipo=='2')
             {
                 if(heroe_en_rango)
                 {
@@ -1062,10 +1082,29 @@ void mover_enemigos(enemigo ejercito[],int total)
                         ejercito[i].direccion_mirada=-1.0;
                     }
                 }
+
+                if(heroe_en_rango)
+                {
+                    ejercito[i].ataque=true;
+                }
                 else
                 {
                     ejercito[i].ataque=false;
+                    if(dist_x>0)
+                    {
+                        ejercito[i].velocidad=1.0;
+                    }
+                    else
+                    {
+                        ejercito[i].velocidad=-1.0;
+                    }
+
+                    if (colision(ejercito[i].x+(ejercito[i].velocidad*5.0),ejercito[i].y)&&ejercito[i].velocidad_y==0.0) 
+                    {
+                        ejercito[i].velocidad_y =-9.0;
+                    }
                 }
+
             }
             
             else if(ejercito[i].tipo=='5')
@@ -1105,7 +1144,7 @@ void mover_enemigos(enemigo ejercito[],int total)
                             {
                                 ejercito[i].laser_enemigos[j].activo=true;
                                 ejercito[i].laser_enemigos[j].x=ejercito[i].x+20;
-                                ejercito[i].laser_enemigos[j].y=ejercito[i].y-5;
+                                ejercito[i].laser_enemigos[j].y=ejercito[i].y+15;
                                 ejercito[i].laser_enemigos[j].velocidad_x=10.0*ejercito[i].direccion_mirada;
                                 break;
                             }
@@ -1122,7 +1161,7 @@ void mover_enemigos(enemigo ejercito[],int total)
                     }
                 }
 
-                if(ejercito[i].velocidad > 0) 
+                if(ejercito[i].velocidad>0) 
                 {
                     frente_x=(ejercito[i].x+45)/TAM_TILE; 
                 }
@@ -1131,7 +1170,7 @@ void mover_enemigos(enemigo ejercito[],int total)
                     frente_x=(ejercito[i].x-5)/TAM_TILE; 
                 }
                 
-                pies_y=(ejercito[i].y + 45)/TAM_TILE; 
+                pies_y=(ejercito[i].y+45)/TAM_TILE; 
                 
                 if(pies_y<fila&&frente_x>=0&&frente_x<columna)
                 {
@@ -1255,9 +1294,18 @@ void mover_enemigos(enemigo ejercito[],int total)
             }
 
             puede_moverse=true;
-            if(ejercito[i].tipo=='5'&&ejercito[i].ataque) 
+            if(ejercito[i].tipo=='5') 
             {
-                puede_moverse = false; 
+                if(ejercito[i].ataque) 
+                {
+                    puede_moverse=false; 
+                }
+                else if(ejercito[i].energia>0) 
+                {
+                    puede_moverse=false;
+                    ejercito[i].cuadro_actual=0; 
+                    ejercito[i].contador_animacion=0;
+                }
             }
 
             if(ejercito[i].ataque)
@@ -1281,7 +1329,11 @@ void mover_enemigos(enemigo ejercito[],int total)
                 if(colision(ejercito[i].x,ejercito[i].y))
                 {
                     ejercito[i].x-=ejercito[i].velocidad;
-                    ejercito[i].velocidad=-ejercito[i].velocidad; 
+
+                    if(ejercito[i].tipo!='2') 
+                    {
+                        ejercito[i].velocidad=-ejercito[i].velocidad; 
+                    }
                 }
             }
             else
@@ -1293,11 +1345,11 @@ void mover_enemigos(enemigo ejercito[],int total)
             {
                 if(ejercito[i].estado==ESTADO_IDLE) 
                 {
-                    limite_cuadros=3;
+                    limite_cuadros=6;
                 }
                 else if(ejercito[i].estado==ESTADO_ATAQUE) 
                 {
-                    limite_cuadros=4;
+                    limite_cuadros=6;
                 }
                 else if(ejercito[i].estado==ESTADO_CAMINAR) 
                 {
@@ -1314,15 +1366,37 @@ void mover_enemigos(enemigo ejercito[],int total)
                 ejercito[i].cuadro_actual=0;
             }
 
-            ejercito[i].y+=4.0;
-            if(colision(ejercito[i].x, ejercito[i].y))
+            if(ejercito[i].tipo=='2')
             {
-                ejercito[i].y=((int)(ejercito[i].y+39)/TAM_TILE)*TAM_TILE-39.1;
+                ejercito[i].velocidad_y+=0.5; 
+                ejercito[i].y+=ejercito[i].velocidad_y;
+
+                if(colision(ejercito[i].x,ejercito[i].y))
+                {
+                    if(ejercito[i].velocidad_y>0)
+                    {
+                        ejercito[i].y=((int)(ejercito[i].y+39)/TAM_TILE)*TAM_TILE-39.1;
+                        ejercito[i].velocidad_y=0.0;
+                    }
+                    else if(ejercito[i].velocidad_y<0) 
+                    {
+                        ejercito[i].y=((int)ejercito[i].y/TAM_TILE)*TAM_TILE+TAM_TILE+0.1;
+                        ejercito[i].velocidad_y=0.0;
+                    }
+                }
+            }
+            else 
+            {
+                ejercito[i].y+=4.0;
+                if(colision(ejercito[i].x,ejercito[i].y))
+                {
+                    ejercito[i].y=((int)(ejercito[i].y+39)/TAM_TILE)*TAM_TILE-39.1;
+                }
             }
 
             if(ejercito[i].estado==ESTADO_ATAQUE&&ejercito[i].cuadro_actual==3&&ejercito[i].contador_animacion==0)
             {
-                if(heroe.tiempo_dano==0&&(ejercito[i].tipo=='2'||ejercito[i].tipo=='9'))
+                if(heroe.tiempo_dano==0&&(ejercito[i].tipo=='2'))
                 {
                     heroe.vida-=ejercito[i].herida;
                     heroe.tiempo_dano=30;
@@ -1501,9 +1575,10 @@ void mover_municion_enemigos(municion balas[],int maximo)
 
 void dibujar_juego(contexto_dibujo *graficos)
 {
-    int i,j,ancho_alien5,alto_alien5,recorte_x,recorte_y,recorte_portal_x,recorte_moneda_x,ancho_frame,alto_frame,ancho_puerta,alto_puerta,fila_y_alien6,ancho_tile,alto_tile;
+    int i,j,recorte_x,recorte_y,recorte_portal_x,recorte_moneda_x,ancho_frame,alto_frame,ancho_puerta,alto_puerta,fila_y_alien6,ancho_tile,alto_tile,fila_y_alien5;
+    int salto_y,salto_x,fila_y;
     int espejo_enemigo=0;
-    float x_bloque,y_bloque,ajuste_y_alien5,ajuste_piso;
+    float x_bloque,y_bloque,ajuste_y_alien5,ajuste_piso,ancho_dibujo_alien,alto_dibujo_alien,ajuste_x_centro,ajuste_centro,y_flotante;
     float ancho_dibujo=60.0;
     float alto_dibujo=85.0;
     float ajuste_x=(ancho_dibujo-40.0)/2.0; 
@@ -1528,50 +1603,56 @@ void dibujar_juego(contexto_dibujo *graficos)
 
             if(mapa[i][j]=='1')
             {
-                
                 if((*imgs).textura_luna!=NULL)
                 {
-                    al_draw_scaled_bitmap((*imgs).textura_luna,209,359,ANCHO_TEXTURA_LUNAR,ALTO_TEXTURA_LUNAR,x_bloque,y_bloque,TAM_TILE,TAM_TILE, 0);
+                    recorte_x=96;
+                    recorte_y=0;
+                    al_draw_scaled_bitmap((*imgs).textura_luna,recorte_x,recorte_y,48,48,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
                 }
             }
             else if(mapa[i][j]=='3')
             {
-                if((*imgs).textura_metal!=NULL)
+                if((*imgs).textura_luna!=NULL) 
                 {
-                    ancho_tile=32;
-                    alto_tile=32;
-                    recorte_x=32;
-                    recorte_y=32;
-                    al_draw_scaled_bitmap((*imgs).textura_metal,recorte_x,recorte_y,ancho_tile,alto_tile,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
+                    recorte_x=0;
+                    recorte_y=80;
+                    al_draw_scaled_bitmap((*imgs).textura_luna,recorte_x,recorte_y,48,48,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
                 }
             }
             else if(mapa[i][j]=='$')
             {
-                ancho_tile=32;
-                alto_tile=32;
-                recorte_x=0;
-                recorte_y=96;
-                al_draw_scaled_bitmap((*imgs).textura_metal,recorte_x,recorte_y,ancho_tile,alto_tile,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
+                if((*imgs).textura_luna!=NULL) 
+                {
+                    recorte_x=0;
+                    recorte_y=160;
+                    al_draw_scaled_bitmap((*imgs).textura_luna,recorte_x,recorte_y,48,48,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
+                }
             }
-            else if(mapa[i][j]=='D'&&(*imgs).door!=NULL)
+            else if((mapa[i][j]=='D'||mapa[i][j]=='A')&&(*imgs).door!=NULL)
             {
-                alto_puerta=256;
-                ancho_puerta=128;
-                al_draw_scaled_bitmap((*imgs).door,0,0,ancho_puerta,alto_puerta,x_bloque,y_bloque,TAM_TILE,TAM_TILE*2,0);
+                alto_puerta=48;
+                ancho_puerta=48;
+                recorte_x=0;
+                recorte_y=0;
+                if(mapa[i][j]=='A')
+                {
+                    recorte_x=144;
+                }
+                al_draw_scaled_bitmap((*imgs).door,recorte_x,recorte_y,ancho_puerta,alto_puerta,x_bloque,y_bloque,TAM_TILE,TAM_TILE*2,0);
             }
             else if(mapa[i][j]=='L'&&(*imgs).palanca!=NULL) 
             {
                 ancho_frame=al_get_bitmap_width((*imgs).palanca)/5;
                 alto_frame=al_get_bitmap_height((*imgs).palanca);
                 
-                al_draw_scaled_bitmap((*imgs).palanca,0,0,ancho_frame,alto_frame,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
+                al_draw_scaled_bitmap((*imgs).palanca,0,0,ancho_frame,alto_frame,x_bloque-10,y_bloque-20,60,60,0);
             }
             else if(mapa[i][j]=='l'&&(*imgs).palanca!=NULL) 
             {
                 ancho_frame=al_get_bitmap_width((*imgs).palanca)/5;
                 alto_frame=al_get_bitmap_height((*imgs).palanca);
                 recorte_x=4*ancho_frame; 
-                al_draw_scaled_bitmap((*imgs).palanca,recorte_x,0,ancho_frame,alto_frame,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
+                al_draw_scaled_bitmap((*imgs).palanca,recorte_x,0,ancho_frame,alto_frame,x_bloque-10,y_bloque-20,60,60,0);
             }
         }
     }
@@ -1634,49 +1715,45 @@ void dibujar_juego(contexto_dibujo *graficos)
             }
         }
 
-        if(enemigos[i].tipo=='5') 
+        if(enemigos[i].tipo=='5'&&(*imgs).alien5!=NULL) 
         {
-            ajuste_y_alien5=ajuste_y;
-            ALLEGRO_BITMAP *img_a_dibujar=NULL;
-            if (enemigos[i].estado==ESTADO_IDLE)
+            int espejo_enemigo = 0;
+            if(enemigos[i].direccion_mirada == -1.0) 
             {
-                img_a_dibujar=(*imgs).alien5_idle;
-                ajuste_y_alien5=ajuste_y+1;
-                ancho_alien5=235;
-                alto_alien5=440;
-            }
-            else if(enemigos[i].estado==ESTADO_CAMINAR)
-            {
-                img_a_dibujar=(*imgs).alien5_caminar;
-                ajuste_y_alien5=ajuste_y+1;
-                ancho_alien5=200;
-                alto_alien5=442;
-            }
-            else if(enemigos[i].estado==ESTADO_MUERTE)
-            {
-                img_a_dibujar=(*imgs).alien5_dead;
-                ajuste_y_alien5=ajuste_y-20;
-                ancho_alien5=413;
-                alto_alien5=410;
-            }
-            else if(enemigos[i].estado==ESTADO_ATAQUE)
-            {
-                img_a_dibujar=(*imgs).alien5_ataque;
-                ajuste_y_alien5=ajuste_y+1;
-                ancho_alien5=534;
-                alto_alien5=428;
+                espejo_enemigo = ALLEGRO_FLIP_HORIZONTAL;
             }
 
-            if(img_a_dibujar!=NULL)
+            ancho_frame = 48; 
+            alto_frame = 48; 
+            recorte_x=enemigos[i].cuadro_actual*48;
+            recorte_y = 0;
+
+            if(enemigos[i].estado == ESTADO_IDLE) 
             {
-                espejo_enemigo=0;
-                if(enemigos[i].direccion_mirada==-1.0)
-                {
-                    espejo_enemigo=ALLEGRO_FLIP_HORIZONTAL;
-                }
-                recorte_x=enemigos[i].cuadro_actual*ancho_alien5;
-                al_draw_scaled_bitmap(img_a_dibujar,recorte_x,0,ancho_alien5,alto_alien5,enemigos[i].x-ajuste_x,enemigos[i].y-ajuste_y_alien5,ancho_dibujo,alto_dibujo,espejo_enemigo);
-            } 
+                recorte_y=0;
+                ajuste_piso=20.0;
+            }
+            else if(enemigos[i].estado == ESTADO_CAMINAR) 
+            {
+                recorte_y=42;  
+                ajuste_piso=14.0;
+            }
+            else if(enemigos[i].estado == ESTADO_ATAQUE) 
+            {
+                recorte_y=73; 
+                ajuste_piso=28.0;
+            }
+            else if(enemigos[i].estado == ESTADO_MUERTE) 
+            {
+                recorte_y=192; 
+                ajuste_piso=14.0;
+            }
+
+            ancho_dibujo=80.0;
+            alto_dibujo=85.0;
+            ajuste_centro=20.0; 
+
+            al_draw_scaled_bitmap((*imgs).alien5,recorte_x,recorte_y,ancho_frame,alto_frame,enemigos[i].x-ajuste_centro,enemigos[i].y-ajuste_piso,ancho_dibujo,alto_dibujo,espejo_enemigo);
         }
 
         if(enemigos[i].tipo=='6'&&(*imgs).intenemy!=NULL) 
@@ -1738,41 +1815,44 @@ void dibujar_juego(contexto_dibujo *graficos)
     {
         if(mis_items[i].activo)
         {
+            y_flotante=mis_items[i].y-(*graficos).movimiento_items;   
+
             if(mis_items[i].tipo==ITEM_VIDA&&(*imgs).pocion_vida!= NULL)
             {
-                al_draw_scaled_bitmap((*imgs).pocion_vida,0,0,al_get_bitmap_width((*imgs).pocion_vida),al_get_bitmap_height((*imgs).pocion_vida),mis_items[i].x,mis_items[i].y,30,30,0);
+                al_draw_scaled_bitmap((*imgs).pocion_vida,0,0,al_get_bitmap_width((*imgs).pocion_vida),al_get_bitmap_height((*imgs).pocion_vida),mis_items[i].x,y_flotante,30,30,0);
             }
             else if(mis_items[i].tipo==ITEM_VENENO&&(*imgs).veneno!=NULL)
             {
-                al_draw_scaled_bitmap((*imgs).veneno,0,0,al_get_bitmap_width((*imgs).veneno),al_get_bitmap_height((*imgs).veneno),mis_items[i].x, mis_items[i].y,30,30,0);
+                al_draw_scaled_bitmap((*imgs).veneno,0,0,al_get_bitmap_width((*imgs).veneno),al_get_bitmap_height((*imgs).veneno),mis_items[i].x,y_flotante,30,30,0);
             }
             else if(mis_items[i].tipo==ITEM_LLAVE_ROJA||mis_items[i].tipo==ITEM_LLAVE_VERDE||mis_items[i].tipo==ITEM_LLAVE_AMARILLA||mis_items[i].tipo==ITEM_LLAVE_AZUL)
             {
                 if(mis_items[i].tipo==ITEM_LLAVE_ROJA&&(*imgs).llave_roja!=NULL)
                 {
-                    al_draw_scaled_bitmap((*imgs).llave_roja,0,0,al_get_bitmap_width((*imgs).llave_roja),al_get_bitmap_height((*imgs).llave_roja),mis_items[i].x,mis_items[i].y,30,30,0);
+                    al_draw_scaled_bitmap((*imgs).llave_roja,0,0,al_get_bitmap_width((*imgs).llave_roja),al_get_bitmap_height((*imgs).llave_roja),mis_items[i].x,y_flotante,30,30,0);
                 }
                 else if(mis_items[i].tipo==ITEM_LLAVE_VERDE&&(*imgs).llave_verde!=NULL)
                 {
-                    al_draw_scaled_bitmap((*imgs).llave_verde,0,0,al_get_bitmap_width((*imgs).llave_verde),al_get_bitmap_height((*imgs).llave_verde),mis_items[i].x,mis_items[i].y,30,30,0);
+                    al_draw_scaled_bitmap((*imgs).llave_verde,0,0,al_get_bitmap_width((*imgs).llave_verde),al_get_bitmap_height((*imgs).llave_verde),mis_items[i].x,y_flotante,30,30,0);
                 }
                 else if(mis_items[i].tipo==ITEM_LLAVE_AMARILLA&&(*imgs).llave_amarilla!=NULL)
                 {
-                    al_draw_scaled_bitmap((*imgs).llave_amarilla,0,0,al_get_bitmap_width((*imgs).llave_amarilla),al_get_bitmap_height((*imgs).llave_amarilla),mis_items[i].x,mis_items[i].y,30,30,0);
+                    al_draw_scaled_bitmap((*imgs).llave_amarilla,0,0,al_get_bitmap_width((*imgs).llave_amarilla),al_get_bitmap_height((*imgs).llave_amarilla),mis_items[i].x,y_flotante,30,30,0);
                 }
                 else if(mis_items[i].tipo==ITEM_LLAVE_AZUL&&(*imgs).llave_azul!=NULL)
                 {
-                    al_draw_scaled_bitmap((*imgs).llave_azul,0,0,al_get_bitmap_width((*imgs).llave_azul),al_get_bitmap_height((*imgs).llave_azul),mis_items[i].x,mis_items[i].y,30,30,0);
+                    al_draw_scaled_bitmap((*imgs).llave_azul,0,0,al_get_bitmap_width((*imgs).llave_azul),al_get_bitmap_height((*imgs).llave_azul),mis_items[i].x,y_flotante,30,30,0);
                 }
             }
             else if(mis_items[i].tipo==ITEM_PUNTOS&&(*imgs).punto!=NULL)
             {
                 recorte_moneda_x=(*graficos).cuadro_moneda*563; 
-                al_draw_scaled_bitmap((*imgs).punto,recorte_moneda_x,0,563,565,mis_items[i].x,mis_items[i].y,25,25,0);
+                y_flotante = mis_items[i].y-(*graficos).movimiento_items;
+                al_draw_scaled_bitmap((*imgs).punto,recorte_moneda_x,0,563,565,mis_items[i].x,y_flotante,25,25,0);
             }
             else if(mis_items[i].tipo==ITEM_MUNICION && (*imgs).municion!=NULL)
             {
-                al_draw_scaled_bitmap((*imgs).municion,0,0,al_get_bitmap_width((*imgs).municion),al_get_bitmap_height((*imgs).municion),mis_items[i].x,mis_items[i].y,30,30,0);
+                al_draw_scaled_bitmap((*imgs).municion,0,0,al_get_bitmap_width((*imgs).municion),al_get_bitmap_height((*imgs).municion),mis_items[i].x,y_flotante,30,30,0);
             }
         }
     }
@@ -1906,10 +1986,10 @@ void recolectar_items(item lista_items[],int maximo)
 
 bool cargar_imagenes(recursos *imgs)
 {
-    (*imgs).fondo_nivel1 = al_load_bitmap("Fondo1.jpg");
+    (*imgs).fondo_nivel1 = al_load_bitmap("Fondo1.png");
     if(!(*imgs).fondo_nivel1)
     { 
-        printf("Error fatal: No se encontro 'Fondo1.jpg'\n"); 
+        printf("Error fatal: No se encontro 'Fondo1.png'\n"); 
         return false; 
     }
 
@@ -1997,38 +2077,10 @@ bool cargar_imagenes(recursos *imgs)
         return false; 
     }
 
-    (*imgs).textura_metal=al_load_bitmap("tile_metal.png");
-    if(!(*imgs).textura_metal)
+    (*imgs).alien5=al_load_bitmap("alien5.png");
+    if(!(*imgs).alien5)
     {
-        printf("Error fatal: No se encontro 'tiles_metal.png'\n");
-        return false;
-    }
-
-    (*imgs).alien5_idle=al_load_bitmap("alien5_idle.png");
-    if(!(*imgs).alien5_idle)
-    {
-        printf("Error fatall: No se encontro 'alien5_idle.png'\n");
-        return false;
-    }
-
-    (*imgs).alien5_caminar=al_load_bitmap("alien5_walk.png");
-    if(!(*imgs).alien5_caminar)
-    {
-        printf("Error fatal: No se encontro 'alien5_walk.png\n");
-        return false;
-    }
-
-    (*imgs).alien5_ataque=al_load_bitmap("alien5_atack.png");
-    if(!(*imgs).alien5_ataque)
-    {
-        printf("Error fatal: No se encontro 'alien5_atack.png\n");
-        return false;
-    }
-
-    (*imgs).alien5_dead=al_load_bitmap("alien5_dead.png");
-    if(!(*imgs).alien5_dead)
-    {
-        printf("Error fatal: No se encontro 'alien5_dead'");
+        printf("Error fatall: No se encontro 'alien5.png'\n");
         return false;
     }
 
@@ -2120,6 +2172,13 @@ bool cargar_imagenes(recursos *imgs)
     if(!(*imgs).intenemy)
     {
         printf("Error fatal: No se encontro 'alien6.png'\n");
+        return false;
+    }
+
+    (*imgs).checkpoint=al_load_bitmap("checkpoint.png");
+    if(!(*imgs).checkpoint)
+    {
+        printf("Error fatal: No se encontro 'checkpoint.png'\n");
         return false;
     }
 
