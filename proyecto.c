@@ -30,7 +30,7 @@
 
 enum Estado_Personaje
 {
-    ESTADO_IDLE = 0, 
+    ESTADO_IDLE=0, 
     ESTADO_CAMINAR,
     ESTADO_SALTO,
     ESTADO_DISPARO,
@@ -72,6 +72,8 @@ struct personaje_
     float x;
     float y;
     float velocidad;
+    float spawn_x;
+    float spawn_y;
     int vida;
     int energia;
     int estado;
@@ -179,6 +181,7 @@ typedef struct contexto_dibujo_ contexto_dibujo;
 
 char mapa[fila][columna];
 int total_enemigos=0;
+int luz_apagada=0;
 float x_portal=0;
 float y_portal=0;
 bool portal_activo = false;
@@ -444,7 +447,12 @@ int main()
                 {
                     if(heroe.estado==ESTADO_MUERTE)
                     {
-                        heroe.cuadro_actual=max_cuadros_heroe-1;
+                        heroe.vida=100;
+                        heroe.x=heroe.spawn_x;
+                        heroe.y=heroe.spawn_y;
+                        heroe.estado=ESTADO_IDLE;
+                        velocidad_caida=0.0;
+                        printf("Has revivido en el último checkpoint!\n");
                     }
                     else
                     {
@@ -538,6 +546,14 @@ int main()
 
             if(casilla_y>=0&&casilla_y<fila&&casilla_x>=0&&casilla_x<columna)
             {
+                if(mapa[casilla_y][casilla_x]=='C')
+                {
+                    heroe.spawn_x=TAM_TILE*casilla_x;
+                    heroe.spawn_y=TAM_TILE*casilla_y;
+                    mapa[casilla_y][casilla_x]='c';
+                    printf("Progreso guardado\n");
+                }
+
                 if(mapa[casilla_y][casilla_x]=='L')
                 {
                     mapa[casilla_y][casilla_x]='l'; 
@@ -745,12 +761,23 @@ bool colision(float x,float y)
 bool cargar_mapa(const char *nombre_archivo)
 {
     int i,j,k;
+    char estado_luz;
     FILE *archivo=fopen(nombre_archivo, "r");
 
     if(archivo==NULL)
     {
         printf("Error al abrir el archivo");
         return false;
+    }
+
+    fscanf(archivo, " %c", &estado_luz);
+    if (estado_luz=='1') 
+    {
+        luz_apagada=1;
+    } 
+    else 
+    {
+        luz_apagada = 0;
     }
 
     for (i=0;i<fila;i++)
@@ -763,6 +790,8 @@ bool cargar_mapa(const char *nombre_archivo)
             {
                 heroe.x=TAM_TILE*j;
                 heroe.y=TAM_TILE*i;  
+                heroe.spawn_x=heroe.x;
+                heroe.spawn_y=heroe.y;
                 mapa[i][j]=0;
             }
 
@@ -1575,10 +1604,12 @@ void mover_municion_enemigos(municion balas[],int maximo)
 
 void dibujar_juego(contexto_dibujo *graficos)
 {
-    int i,j,recorte_x,recorte_y,recorte_portal_x,recorte_moneda_x,ancho_frame,alto_frame,ancho_puerta,alto_puerta,fila_y_alien6,ancho_tile,alto_tile,fila_y_alien5;
-    int salto_y,salto_x,fila_y;
+    int i,j,recorte_x,recorte_y,recorte_portal_x,recorte_moneda_x,ancho_frame,alto_frame,ancho_puerta,alto_puerta,fila_y_alien6;
+    int salto_y,salto_x,fila_y,ancho_tile,alto_tile,fila_y_alien5,m_y,m_x;
     int espejo_enemigo=0;
     float x_bloque,y_bloque,ajuste_y_alien5,ajuste_piso,ancho_dibujo_alien,alto_dibujo_alien,ajuste_x_centro,ajuste_centro,y_flotante;
+    float centro_x,centro_y,radio_vision,grosor_oscuridad,mini_tile,pos_mapa_x,pos_mapa_y,rect_x,rect_y,mini_enemigo_x,mini_enemigo_y;
+    float mini_portal_x,mini_portal_y,mini_heroe_x,mini_heroe_y;
     float ancho_dibujo=60.0;
     float alto_dibujo=85.0;
     float ajuste_x=(ancho_dibujo-40.0)/2.0; 
@@ -1878,6 +1909,62 @@ void dibujar_juego(contexto_dibujo *graficos)
         }
     }
 
+    if(luz_apagada==1)
+    {
+        centro_x=heroe.x+20.0; 
+        centro_y=heroe.y+20.0;
+        radio_vision=100.0;
+        grosor_oscuridad=4000.0;
+        
+        al_draw_circle(centro_x,centro_y,radio_vision+(grosor_oscuridad/2.0),al_map_rgb(0,0,0),grosor_oscuridad);
+    }
+
+        mini_tile=5.0; 
+        pos_mapa_x=ancho_pantalla-(columna*mini_tile)-30.0;
+        pos_mapa_y=30.0;
+
+        al_draw_filled_rectangle(pos_mapa_x-5,pos_mapa_y-5,pos_mapa_x+(columna*mini_tile)+5,pos_mapa_y+(fila*mini_tile)+5,al_map_rgba(0,0,0,150));
+
+        for(m_y=0;m_y<fila;m_y++) 
+        {
+            for(m_x=0;m_x<columna;m_x++) 
+            {
+                rect_x=pos_mapa_x+(m_x*mini_tile);
+                rect_y=pos_mapa_y+(m_y*mini_tile);
+
+                if (mapa[m_y][m_x]=='1'||mapa[m_y][m_x]=='3'||mapa[m_y][m_x]=='$') 
+                {
+                    al_draw_filled_rectangle(rect_x,rect_y,rect_x+mini_tile,rect_y+mini_tile,al_map_rgb(150,150,150)); 
+                } 
+                else if (mapa[m_y][m_x]=='D'||mapa[m_y][m_x]=='A') 
+                {
+                    al_draw_filled_rectangle(rect_x,rect_y,rect_x+mini_tile,rect_y+mini_tile,al_map_rgb(139,69,19)); 
+                }
+            }
+        }
+
+        for(i=0;i<total_enemigos;i++) 
+        {
+            if(enemigos[i].vida>0) 
+            { 
+                mini_enemigo_x=pos_mapa_x+(enemigos[i].x/TAM_TILE)*mini_tile;
+                mini_enemigo_y=pos_mapa_y+(enemigos[i].y/TAM_TILE)*mini_tile;
+                al_draw_filled_rectangle(mini_enemigo_x,mini_enemigo_y,mini_enemigo_x+mini_tile,mini_enemigo_y+mini_tile,al_map_rgb(255,0,0));
+            }
+        }
+
+        if(portal_activo) 
+        {
+            mini_portal_x=pos_mapa_x+(x_portal/TAM_TILE)*mini_tile;
+            mini_portal_y=pos_mapa_y+(y_portal/TAM_TILE)*mini_tile;
+            al_draw_filled_rectangle(mini_portal_x,mini_portal_y,mini_portal_x+mini_tile,mini_portal_y+mini_tile,al_map_rgb(200,0,255));
+        }
+
+        mini_heroe_x=pos_mapa_x+(heroe.x/TAM_TILE)*mini_tile;
+        mini_heroe_y=pos_mapa_y+(heroe.y/TAM_TILE)*mini_tile;
+        al_draw_filled_rectangle(mini_heroe_x,mini_heroe_y,mini_heroe_x+mini_tile,mini_heroe_y+mini_tile,al_map_rgb(0,255,0));
+
+
     if((*graficos).fuente!=NULL)
     {
         al_draw_textf((*graficos).fuente,al_map_rgb(255,255,255),20,20,0,"VIDA: %d",heroe.vida);
@@ -1947,7 +2034,7 @@ void recolectar_items(item lista_items[],int maximo)
                     {
                         heroe.vida=100; 
                     }
-                    printf("Vida recogida! Vida actual: %d\n", heroe.vida);
+                    printf("Vida recogida, vida actual: %d\n",heroe.vida);
                 }
                 else if(lista_items[i].tipo==ITEM_VENENO||lista_items[i].tipo==ITEM_LLAVE_ROJA||lista_items[i].tipo==ITEM_LLAVE_VERDE||lista_items[i].tipo==ITEM_LLAVE_AMARILLA||lista_items[i].tipo==ITEM_LLAVE_AZUL)
                 {
@@ -1957,7 +2044,7 @@ void recolectar_items(item lista_items[],int maximo)
                         if(heroe.inventario[j]==0)
                         {
                             heroe.inventario[j] = lista_items[i].tipo; 
-                            printf("Objeto guardado en el bolsillo %d!\n", j);
+                            printf("Objeto guardado en el bolsillo %d\n", j);
                             lista_items[i].activo=false; 
                             guardado=true;
                             break;
@@ -1965,18 +2052,18 @@ void recolectar_items(item lista_items[],int maximo)
                     }
                     if(!guardado)
                     {
-                        printf("Inventario lleno!\n");
+                        printf("Inventario lleno\n");
                     }
                 }
                 else if(lista_items[i].tipo==ITEM_PUNTOS)
                 {
-                    heroe.puntos += lista_items[i].valor;
-                    printf("Punto recogido! Puntuación: %d\n",heroe.puntos);
+                    heroe.puntos+=lista_items[i].valor;
+                    printf("Punto recogido, puntuación: %d\n",heroe.puntos);
                 }
                 else if(lista_items[i].tipo==ITEM_MUNICION)
                 {
                     heroe.municion+=lista_items[i].valor;
-                    printf("Munición recogida! Tienes %d tiros.\n",heroe.municion);
+                    printf("Munición recogida, tienes %d tiros.\n",heroe.municion);
                 }
                 lista_items[i].activo = false;
             }
