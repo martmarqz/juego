@@ -7,7 +7,7 @@
 #include<allegro5/allegro_ttf.h> //fuentes ttf
 #include<allegro5/allegro_primitives.h>
 #include<allegro5/allegro_audio.h> 
-#include<allegro5/allegro_acodec.h> //audio codecs
+#include<allegro5/allegro_acodec.h> 
 #define TAM_TILE 40
 #define fila 27
 #define columna 48
@@ -161,6 +161,17 @@ struct recursos_
     ALLEGRO_BITMAP *door;
     ALLEGRO_BITMAP *intenemy;
     ALLEGRO_BITMAP *checkpoint;
+    ALLEGRO_SAMPLE *disparo_prota;
+    ALLEGRO_SAMPLE *disparo_alien5;
+    ALLEGRO_SAMPLE *disparo_alien6;
+    ALLEGRO_SAMPLE *sonido_portal;
+    ALLEGRO_SAMPLE *sonido_municion;
+    ALLEGRO_SAMPLE *sonido_moneda;
+    ALLEGRO_SAMPLE *sonido_llaves;
+    ALLEGRO_SAMPLE *sonido_proyectil;
+    ALLEGRO_SAMPLE *sonido_equipar;
+    ALLEGRO_SAMPLE *sonido_saltar;
+    ALLEGRO_SAMPLE *sonido_vida;
 };
 typedef struct recursos_ recursos;
 
@@ -194,15 +205,15 @@ trampas mis_trampas[MAX_TRAMPAS];
 void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base);
 void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial);
 void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida);
-void mover_enemigos(enemigo ejercito[],int total);
+void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos);
 void mover_municion_heroe(municion balas[], int maximo);
 void mover_municion_enemigos(municion balas[], int maximo);
 void dibujar_juego(contexto_dibujo *graficos);
-void recolectar_items(item lista_items[],int maximo);
+void recolectar_items(item lista_items[],int maximo,recursos *sonidos);
 bool colision(float x,float y);
 bool cargar_mapa(const char *nombre_archivo);
 bool colision_lasers(float x,float y);
-bool cargar_imagenes(recursos *imgs);
+bool cargar_recursos(recursos *imgs);
 
 int main()
 {
@@ -248,11 +259,25 @@ int main()
     al_init_primitives_addon();
     al_install_keyboard(); 
     al_init_image_addon();
-
+    if(!al_install_audio()) 
+    {
+        printf("Error fatal: No se pudo iniciar el sistema de audio.\n");
+        return -1;
+    }
+    if(!al_init_acodec_addon()) 
+    {
+        printf("Error fatal: No se pudo iniciar los codecs de audio.\n");
+        return -1;
+    }
+    if(!al_reserve_samples(10)) 
+    {
+        printf("Error fatal: No se pudieron reservar canales de audio.\n");
+        return -1;
+    }
     ALLEGRO_FONT *fuente_texto=al_create_builtin_font();
 
     recursos mis_imagenes;
-    if(!cargar_imagenes(&mis_imagenes))
+    if(!cargar_recursos(&mis_imagenes))
     {
         return -1;
     }
@@ -288,6 +313,7 @@ int main()
                     {
                      velocidad_caida=-9.0;
                     }
+                    al_play_sample(mis_imagenes.sonido_saltar,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                     break;
                 }
 
@@ -310,6 +336,7 @@ int main()
                             
                                 heroe.municion--; 
                                 printf("Disparo! Munición restante: %d\n", heroe.municion);
+                                al_play_sample(mis_imagenes.disparo_prota,0.8,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                 break;
                             }
                         }
@@ -340,6 +367,7 @@ int main()
                                     heroe.proyectiles[k].velocidad_y=-8.0; 
                                     heroe.proyectiles[k].distancia_recorrida=0;
                                     printf("Veneno lanzado!\n");
+                                    al_play_sample(mis_imagenes.sonido_proyectil,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                     break; 
                                 }
                             }
@@ -385,6 +413,7 @@ int main()
                 direccion_mirada=-1.0;
             }
 
+            //puede ir en una funcion
             contador_animacion_moneda++;
             if(contador_animacion_moneda>=5)
             {
@@ -411,7 +440,7 @@ int main()
             if(heroe.tiempo_dano>0)
             {
                 heroe.tiempo_dano--; 
-                heroe.estado=ESTADO_DANO; 
+                heroe.estado=ESTADO_DANO; //funcion animacion
             }
 
             else if(heroe.vida<=0)
@@ -463,7 +492,7 @@ int main()
 
             r_x = heroe.cuadro_actual*ANCHO_SPRITE;
 
-            mover_enemigos(enemigos,total_enemigos);
+            mover_enemigos(enemigos,total_enemigos,&mis_imagenes);
             mover_municion_heroe(laser_protagonista,MAX_LASERS);
             mover_municion_heroe(heroe.proyectiles,MAX_ITEMS);
             
@@ -472,9 +501,9 @@ int main()
                 mover_municion_enemigos(enemigos[i].laser_enemigos,MAX_LASERS);
             }
 
-            recolectar_items(mis_items,MAX_ITEMS);
+            recolectar_items(mis_items,MAX_ITEMS,&mis_imagenes);
 
-            for(i=0;i<MAX_TRAMPAS;i++)
+            for(i=0;i<MAX_TRAMPAS;i++) //funcion
             {
                 if(mis_trampas[i].activado)
                 {
@@ -490,7 +519,7 @@ int main()
                 }
             }
 
-            if(portal_activo)
+            if(portal_activo) //funcion
             {
                 if(heroe.x<x_portal+TAM_TILE&&heroe.x+40>x_portal&&heroe.y<y_portal+TAM_TILE&&heroe.y+40>y_portal-TAM_TILE)
                 {
@@ -521,7 +550,8 @@ int main()
                         if(tiene_roja&&tiene_verde&&tiene_amarilla&&tiene_azul)
                         {
                             portal_abierto=true;
-                            printf("Todas las llaves insertadas! Portal activado.\n");
+                            al_play_sample(mis_imagenes.sonido_portal,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                            printf("Todas las llaves insertadas, portal activado.\n");
                             
                             for(i=0; i<MAX_COSAS; i++)
                             {
@@ -575,7 +605,7 @@ int main()
                 }
             }
 
-            if(cambiar_nivel)
+            if(cambiar_nivel) //funcion
             {
                 total_enemigos=0;
                 portal_activo=false;
@@ -682,6 +712,7 @@ int main()
 
     }
 
+    //funcion destruir
     al_destroy_bitmap(mis_imagenes.fondo_nivel1);
     al_destroy_bitmap(mis_imagenes.img_ataque);
     al_destroy_bitmap(mis_imagenes.img_dano);
@@ -710,6 +741,15 @@ int main()
     al_destroy_bitmap(mis_imagenes.palanca);
     al_destroy_bitmap(mis_imagenes.door);
     al_destroy_bitmap(mis_imagenes.intenemy);
+    al_destroy_sample(mis_imagenes.disparo_prota);
+    al_destroy_sample(mis_imagenes.disparo_alien5);
+    al_destroy_sample(mis_imagenes.disparo_alien6);
+    al_destroy_sample(mis_imagenes.sonido_portal);
+    al_destroy_sample(mis_imagenes.sonido_municion);
+    al_destroy_sample(mis_imagenes.sonido_moneda);
+    al_destroy_sample(mis_imagenes.sonido_llaves);
+    al_destroy_sample(mis_imagenes.sonido_proyectil);
+    al_destroy_sample(mis_imagenes.sonido_equipar);
     al_destroy_font(fuente_texto);
     al_destroy_timer(timer);
     al_destroy_event_queue(queue);
@@ -758,7 +798,7 @@ bool colision(float x,float y)
     return false;
 }
 
-bool cargar_mapa(const char *nombre_archivo)
+bool cargar_mapa(const char *nombre_archivo)//verificar que cambie mas de 1 nivel
 {
     int i,j,k;
     char estado_luz;
@@ -1056,13 +1096,14 @@ void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida)
     }
 }
 
-void mover_enemigos(enemigo ejercito[],int total)
+void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos)
 {
     int max_cuadros=8;
     int limite_cuadros=8;
     int i,j,frente_x,pies_y; 
     float dist_x_abs,dist_y_abs,dist_x,dist_y;
     bool puede_moverse;
+    bool heroe_en_rango;
 
     for(i=0;i<total;i++)
     {
@@ -1095,7 +1136,7 @@ void mover_enemigos(enemigo ejercito[],int total)
                 dist_y_abs=-dist_y;
             }
 
-            bool heroe_en_rango=(heroe.vida>0&&dist_x_abs<=ejercito[i].alcance&&dist_y_abs<40.0);
+            heroe_en_rango=(heroe.vida>0&&dist_x_abs<=ejercito[i].alcance&&dist_y_abs<40.0);
 
             if(ejercito[i].tipo=='2')
             {
@@ -1175,6 +1216,7 @@ void mover_enemigos(enemigo ejercito[],int total)
                                 ejercito[i].laser_enemigos[j].x=ejercito[i].x+20;
                                 ejercito[i].laser_enemigos[j].y=ejercito[i].y+15;
                                 ejercito[i].laser_enemigos[j].velocidad_x=10.0*ejercito[i].direccion_mirada;
+                                al_play_sample((*sonidos).disparo_alien5,0.8,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                 break;
                             }
                         }
@@ -1261,6 +1303,7 @@ void mover_enemigos(enemigo ejercito[],int total)
                                     ejercito[i].laser_enemigos[j].x=ejercito[i].x+20;
                                     ejercito[i].laser_enemigos[j].y=ejercito[i].y+10;
                                     ejercito[i].laser_enemigos[j].velocidad_x=15.0*ejercito[i].direccion_mirada; 
+                                    al_play_sample((*sonidos).disparo_alien6,0.8,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                     break;
                                 }
                             }
@@ -1511,7 +1554,7 @@ void mover_municion_heroe(municion balas[],int maximo)
                 balas[i].activo=false;
             }
 
-            if(balas[i].activo)
+            if(balas[i].activo)//sacar
             {
                 for(j=0;j<total_enemigos;j++)
                 {
@@ -1911,7 +1954,7 @@ void dibujar_juego(contexto_dibujo *graficos)
 
     if(luz_apagada==1)
     {
-        centro_x=heroe.x+20.0; 
+        centro_x=heroe.x+20.0; //usar mis define
         centro_y=heroe.y+20.0;
         radio_vision=100.0;
         grosor_oscuridad=4000.0;
@@ -2010,7 +2053,7 @@ bool colision_lasers(float x,float y)
     return false;
 }
 
-void recolectar_items(item lista_items[],int maximo)
+void recolectar_items(item lista_items[],int maximo,recursos *sonidos)
 {
     int i,j;
     bool guardado;
@@ -2035,6 +2078,7 @@ void recolectar_items(item lista_items[],int maximo)
                         heroe.vida=100; 
                     }
                     printf("Vida recogida, vida actual: %d\n",heroe.vida);
+                    al_play_sample((*sonidos).sonido_vida,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                 }
                 else if(lista_items[i].tipo==ITEM_VENENO||lista_items[i].tipo==ITEM_LLAVE_ROJA||lista_items[i].tipo==ITEM_LLAVE_VERDE||lista_items[i].tipo==ITEM_LLAVE_AMARILLA||lista_items[i].tipo==ITEM_LLAVE_AZUL)
                 {
@@ -2047,6 +2091,14 @@ void recolectar_items(item lista_items[],int maximo)
                             printf("Objeto guardado en el bolsillo %d\n", j);
                             lista_items[i].activo=false; 
                             guardado=true;
+                            if(lista_items[i].tipo==ITEM_VENENO) 
+                            {
+                                al_play_sample((*sonidos).sonido_equipar,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                            } 
+                            else 
+                            {
+                                al_play_sample((*sonidos).sonido_llaves,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                            }
                             break;
                         }
                     }
@@ -2059,11 +2111,13 @@ void recolectar_items(item lista_items[],int maximo)
                 {
                     heroe.puntos+=lista_items[i].valor;
                     printf("Punto recogido, puntuación: %d\n",heroe.puntos);
+                    al_play_sample((*sonidos).sonido_moneda,0.7,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                 }
                 else if(lista_items[i].tipo==ITEM_MUNICION)
                 {
                     heroe.municion+=lista_items[i].valor;
                     printf("Munición recogida, tienes %d tiros.\n",heroe.municion);
+                    al_play_sample((*sonidos).sonido_municion,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                 }
                 lista_items[i].activo = false;
             }
@@ -2071,7 +2125,7 @@ void recolectar_items(item lista_items[],int maximo)
     }
 }
 
-bool cargar_imagenes(recursos *imgs)
+bool cargar_recursos(recursos *imgs)
 {
     (*imgs).fondo_nivel1 = al_load_bitmap("Fondo1.png");
     if(!(*imgs).fondo_nivel1)
@@ -2266,6 +2320,83 @@ bool cargar_imagenes(recursos *imgs)
     if(!(*imgs).checkpoint)
     {
         printf("Error fatal: No se encontro 'checkpoint.png'\n");
+        return false;
+    }
+
+    (*imgs).disparo_prota=al_load_sample("laser_prota.ogg");
+    if(!(*imgs).disparo_prota)
+    {
+        printf("Error fatal: No se encontro 'laser_prota.ogg'\n");
+        return false;
+    }
+
+    (*imgs).disparo_alien5=al_load_sample("laser_alien5.ogg");
+    if(!(*imgs).disparo_alien5)
+    {
+        printf("Error fatal: No se encontro 'laser_alien5.ogg'\n");
+        return false;
+    }
+
+    (*imgs).disparo_alien6=al_load_sample("laser_alien6.ogg");
+    if(!(*imgs).disparo_alien6)
+    {
+        printf("Error fatal: No se encontro 'laser_alien6.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_equipar=al_load_sample("equipar.ogg");
+    if(!(*imgs).sonido_equipar)
+    {
+        printf("Error fatal: No se encontro 'equipar.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_proyectil=al_load_sample("impacto_proyectil.ogg");
+    if(!(*imgs).sonido_proyectil)
+    {
+        printf("Error fatal: No se encontro 'impacto_proyectil.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_llaves=al_load_sample("llaves.ogg");
+    if(!(*imgs).sonido_llaves)
+    {
+        printf("Error fatal: No se encontro 'llaves.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_moneda=al_load_sample("moneda.ogg");
+    if(!(*imgs).sonido_moneda)
+    {
+        printf("Error fatal: No se encontro 'moneda.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_municion=al_load_sample("municion.ogg");
+    if(!(*imgs).sonido_municion)
+    {
+        printf("Error fatal: No se encontro 'municion.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_portal=al_load_sample("portal.ogg");
+    if(!(*imgs).sonido_portal)
+    {
+        printf("Error fatal: No se encontro 'portal.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_saltar=al_load_sample("saltar.ogg");
+    if(!(*imgs).sonido_saltar)
+    {
+        printf("Error fatal: No se encontro 'saltar.ogg'\n");
+        return false;
+    }
+
+    (*imgs).sonido_vida=al_load_sample("vida.ogg");
+    if(!(*imgs).sonido_vida)
+    {
+        printf("Error fatal: No se encontro 'vida.ogg'\n");
         return false;
     }
 
