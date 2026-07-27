@@ -144,7 +144,6 @@ struct recursos_
     ALLEGRO_BITMAP *img_idle;
     ALLEGRO_BITMAP *img_basico;
     ALLEGRO_BITMAP *textura_luna;
-    ALLEGRO_BITMAP *textura_metal;
     ALLEGRO_BITMAP *pocion_vida;
     ALLEGRO_BITMAP *alien5;
     ALLEGRO_BITMAP *veneno;
@@ -209,9 +208,17 @@ struct contexto_dibujo_
 };
 typedef struct contexto_dibujo_ contexto_dibujo;
 
+struct ranking_
+{
+    char nombre[20];
+    int puntaje;
+};
+typedef struct ranking_ ranking;
+
 char mapa[fila][columna];
 personaje heroe;
 
+int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue);
 void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base);
 void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial);
 void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida);
@@ -221,13 +228,15 @@ void dibujar_juego(contexto_dibujo *graficos);
 void recolectar_items(item lista_items[],int maximo,recursos *sonidos, estado_juego *nivel);
 void limpieza(recursos *imgs,ALLEGRO_FONT *fuente,ALLEGRO_TIMER *timer,ALLEGRO_EVENT_QUEUE *queue,ALLEGRO_DISPLAY *display);
 void animacion_entorno(int *cont_moneda,int *cuad_moneda,float *mov_items,float *vel_flote);
-void actualizar_estado_heroe(personaje *h,bool izq,bool der,float *vel_caida,int max_cuadros);
+void actualizar_estado_heroe(personaje *h,bool izq,bool der,float *vel_caida,int max_cuadros,recursos *imgs);
 void mover_municion_heroe(municion balas[],int maximo,estado_juego *nivel);
 void trampitas(personaje *h,float *vel_caida,estado_juego *nivel);
 void portalito(personaje *h,bool *portal_abierto,bool *cambiar_nivel,recursos *imgs,estado_juego *nivel);
 void cambios_de_niveles(int *nivel_actual,bool *corriendo,bool *portal_abierto,float *vel_caida,estado_juego *nivel);
-bool cargar_mapa(const char *nombre_archivo, estado_juego *nivel);
 void disparar_proyectil(personaje *h,int tipo_municion,float direccion_mirada,recursos *imgs);
+void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue);
+void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue);
+bool cargar_mapa(const char *nombre_archivo, estado_juego *nivel);
 bool colision(float x,float y);
 bool cargar_mapa(const char *nombre_archivo, estado_juego *nivel);
 bool colision_lasers(float x,float y);
@@ -235,11 +244,16 @@ bool cargar_recursos(recursos *imgs);
 
 int main()
 {
-    bool corriendo=true;
+    //4 y 7 de la pauta
+    bool programa_completo=true;
+    bool corriendo;
     bool dibujar=true;
     bool portal_abierto=false;
     bool cambiar_nivel=false;
-    int i,j,k,casilla_x,casilla_y,fil, col;
+    bool menu;
+    bool tecla_izq;
+    bool tecla_der;
+    int i,j,k,casilla_x,casilla_y,fil,col,seleccion;
     int voltear=0;
     int max_cuadros_heroe=5;
     int cuadro_animacion_moneda=0;
@@ -253,7 +267,9 @@ int main()
     float direccion_mirada=1.0;
     float movimiento_y_items=0.0;
     float velocidad_flotacion=0.25;
+    char nombre_jugador[20];
     estado_juego mi_nivel;
+    recursos mis_imagenes;
 
     mi_nivel.total_enemigos=0;
     mi_nivel.luz_apagada=0;
@@ -275,262 +291,291 @@ int main()
         return -1;
     }
 
-    if(!al_init()) 
-    {
-        printf("Error al abrir Allegro");
-        return -1;
-    }
-
+    al_init();
     al_init_primitives_addon();
     al_install_keyboard(); 
+    al_install_mouse();
     al_init_image_addon();
-    if(!al_install_audio()) 
-    {
-        printf("Error fatal: No se pudo iniciar el sistema de audio.\n");
-        return -1;
-    }
-    if(!al_init_acodec_addon()) 
-    {
-        printf("Error fatal: No se pudo iniciar los codecs de audio.\n");
-        return -1;
-    }
-    if(!al_reserve_samples(10)) 
-    {
-        printf("Error fatal: No se pudieron reservar canales de audio.\n");
-        return -1;
-    }
+    al_install_audio();
+    al_init_acodec_addon();
+    al_reserve_samples(10);
     al_init_font_addon();
     al_init_ttf_addon();
-    ALLEGRO_FONT *fuente_texto=al_load_ttf_font("mifuente.ttf",24,0); 
     
+    cargar_recursos(&mis_imagenes);
+    al_set_new_display_flags(ALLEGRO_WINDOWED | ALLEGRO_MAXIMIZED | ALLEGRO_FULLSCREEN_WINDOW);
+    ALLEGRO_DISPLAY *display = al_create_display(ancho_pantalla,alto_pantalla);
+    ALLEGRO_TIMER *timer = al_create_timer(1.0 / 60.0);
+    ALLEGRO_EVENT_QUEUE *queue = al_create_event_queue();
+    ALLEGRO_FONT *fuente_texto=al_load_ttf_font("mifuente.ttf",24,0); 
     if(!fuente_texto) 
     {
         printf("No se encontro mifuente.ttf\n");
         fuente_texto = al_create_builtin_font();
     }
+    ALLEGRO_FONT *fuente_titulo=al_load_ttf_font("airstrikechrome.ttf",60,0);
+    ALLEGRO_FONT *fuente_opciones=al_load_ttf_font("Conthrax-SemiBold.otf",30,0);
+    ALLEGRO_FONT *fuente_ranking=al_load_ttf_font("Ethnocentric-Regular.otf",24,0);
+    ALLEGRO_FONT *fuente_nombre=al_load_ttf_font("Cynatar.otf",35,0);
 
-    recursos mis_imagenes;
-    if(!cargar_recursos(&mis_imagenes))
-    {
-        return -1;
-    }
-
-    al_set_new_display_flags(ALLEGRO_WINDOWED | ALLEGRO_MAXIMIZED | ALLEGRO_FULLSCREEN_WINDOW);
-    ALLEGRO_DISPLAY *display = al_create_display(ancho_pantalla,alto_pantalla);
-    ALLEGRO_TIMER *timer = al_create_timer(1.0 / 60.0);
-    ALLEGRO_EVENT_QUEUE *queue = al_create_event_queue();
-
-    al_register_event_source(queue, al_get_keyboard_event_source());
-    al_register_event_source(queue, al_get_display_event_source(display));
-    al_register_event_source(queue, al_get_timer_event_source(timer));
+    al_register_event_source(queue,al_get_keyboard_event_source());
+    al_register_event_source(queue,al_get_mouse_event_source());
+    al_register_event_source(queue,al_get_display_event_source(display));
+    al_register_event_source(queue,al_get_timer_event_source(timer));
    
-    al_start_timer(timer);
-
-    while (corriendo)
+    while (programa_completo)
     {
-        ALLEGRO_EVENT evento;
-        al_wait_for_event(queue, &evento);
-
-        if(evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE)
+        menu=true;
+        corriendo=false;
+        while(menu)
         {
-            corriendo=false;
-        }
-
-        else if(evento.type==ALLEGRO_EVENT_KEY_DOWN)
-        {
-            switch (evento.keyboard.keycode)
+            seleccion=mostrar_menu(display,fuente_titulo,fuente_opciones,queue);
+        
+            if(seleccion==0)
             {
-                case ALLEGRO_KEY_UP:
+                pedir_nombre(nombre_jugador,display,fuente_nombre,queue);
+                corriendo=true;
+                menu=false;
+            }
+            if(seleccion==1)
+            {
+                break;
+            }
+            if(seleccion==2)
+            {
+                el_ranking(display,fuente_ranking,queue);
+            }
+            if(seleccion==3)
+            {
+                corriendo=false;
+                menu=false;
+                programa_completo=false;
+            }
+        }       
+        if(corriendo)
+        {
+            al_start_timer(timer);
+        }
+        while (corriendo)
+        {
+            ALLEGRO_EVENT evento;
+            al_wait_for_event(queue, &evento);
+
+            if(evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE)
+            {
+                corriendo=false;
+                programa_completo=false;
+            }
+
+            else if(evento.type==ALLEGRO_EVENT_KEY_DOWN)
+            {
+                switch (evento.keyboard.keycode)
                 {
-                    if(colision(heroe.x,heroe.y+1.0))
+                    case ALLEGRO_KEY_UP:
                     {
-                     velocidad_caida=-9.0;
+                        if(colision(heroe.x,heroe.y+1.0))
+                        {   
+                        velocidad_caida=-9.0;
+                        }
+                        al_play_sample(mis_imagenes.sonido_saltar,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                        break;
                     }
-                    al_play_sample(mis_imagenes.sonido_saltar,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
-                    break;
-                }
 
-                case ALLEGRO_KEY_SPACE:
-                {
-                    disparar_proyectil(&heroe,MUNICION_LASER,direccion_mirada,&mis_imagenes);
-                    break;
-                }
-            
-                case ALLEGRO_KEY_V:
-                {
-                    disparar_proyectil(&heroe,MUNICION_VENENO,direccion_mirada,&mis_imagenes);
-                    break;
-                }
-
-                case ALLEGRO_KEY_ESCAPE:
-                {
-                    corriendo=false;
-                    break;
-                }
-            }
-        }
-        else if(evento.type==ALLEGRO_EVENT_KEY_UP)
-        {
-            switch (evento.keyboard.keycode)
-            {
-                case ALLEGRO_KEY_SPACE:
-                {
-                    heroe.ataque=false;
-                    break;
-                }
-            }
-        }
-
-        else if(evento.type==ALLEGRO_EVENT_TIMER)
-        {
-            ALLEGRO_KEYBOARD_STATE estado_teclado;
-            al_get_keyboard_state(&estado_teclado);
-
-            bool tecla_izq=al_key_down(&estado_teclado, ALLEGRO_KEY_LEFT);
-            bool tecla_der=al_key_down(&estado_teclado,ALLEGRO_KEY_RIGHT);
-
-            if(tecla_der)
-            {
-                direccion_mirada=1.0;
-            }
-            if(tecla_izq)
-            {
-                direccion_mirada=-1.0;
-            }
-
-            if(heroe.vida > 0)
-            {
-                mover_personaje(&heroe, tecla_izq, tecla_der, &velocidad_caida);
-            }
-
-            actualizar_estado_heroe(&heroe,tecla_izq,tecla_der,&velocidad_caida,max_cuadros_heroe);
-            r_x = heroe.cuadro_actual*ANCHO_SPRITE;
-            mover_enemigos(mi_nivel.enemigos,mi_nivel.total_enemigos,&mis_imagenes);
-            mover_municion_heroe(heroe.proyectiles,MAX_ITEMS,&mi_nivel);
-            
-            for(i=0; i<mi_nivel.total_enemigos; i++)
-            {
-                mover_municion_enemigos(mi_nivel.enemigos[i].laser_enemigos,MAX_LASERS);
-            }
-
-            recolectar_items(mi_nivel.mis_items,MAX_ITEMS,&mis_imagenes,&mi_nivel);
-            trampitas(&heroe,&velocidad_caida,&mi_nivel);
-            portalito(&heroe,&portal_abierto,&cambiar_nivel,&mis_imagenes,&mi_nivel);
-
-            casilla_x=(heroe.x+20)/TAM_TILE;
-            casilla_y=(heroe.y+20)/TAM_TILE;
-
-            if(casilla_y>=0&&casilla_y<fila&&casilla_x>=0&&casilla_x<columna)
-            {
-                if(mapa[casilla_y][casilla_x]=='C')
-                {
-                    heroe.spawn_x=TAM_TILE*casilla_x;
-                    heroe.spawn_y=TAM_TILE*casilla_y;
-                    mapa[casilla_y][casilla_x]='c';
-                    printf("Progreso guardado\n");
-                }
-
-                if(mapa[casilla_y][casilla_x]=='L')
-                {
-                    mapa[casilla_y][casilla_x]='l'; 
-                    al_play_sample(mis_imagenes.sonido_palanca,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
-                    
-                    for(fil=casilla_y-3;fil<=casilla_y+3;fil++)
+                    case ALLEGRO_KEY_SPACE:
                     {
-                        for(col=casilla_x-3;col<=casilla_x+3;col++)
+                        disparar_proyectil(&heroe,MUNICION_LASER,direccion_mirada,&mis_imagenes);
+                        break;
+                    }
+            
+                    case ALLEGRO_KEY_V:
+                    {
+                        disparar_proyectil(&heroe,MUNICION_VENENO,direccion_mirada,&mis_imagenes);
+                        break;
+                    }
+
+                    case ALLEGRO_KEY_ESCAPE:
+                    {
+                        corriendo=false;
+                        break;
+                    }
+                }
+            }
+            else if(evento.type==ALLEGRO_EVENT_KEY_UP)
+            {
+                switch (evento.keyboard.keycode)
+                {
+                    case ALLEGRO_KEY_SPACE:
+                    {
+                        heroe.ataque=false;
+                        break;
+                    }
+                }
+            }
+            else if(evento.type==ALLEGRO_EVENT_TIMER)
+            {
+                ALLEGRO_KEYBOARD_STATE estado_teclado;
+                al_get_keyboard_state(&estado_teclado);
+                tecla_izq=al_key_down(&estado_teclado, ALLEGRO_KEY_LEFT);
+                tecla_der=al_key_down(&estado_teclado,ALLEGRO_KEY_RIGHT);
+
+                if(tecla_der)
+                {
+                    direccion_mirada=1.0;
+                }
+                if(tecla_izq)
+                {
+                    direccion_mirada=-1.0;
+                }
+                if(heroe.vida>0)
+                {
+                    mover_personaje(&heroe, tecla_izq, tecla_der, &velocidad_caida);
+                }
+
+                actualizar_estado_heroe(&heroe,tecla_izq,tecla_der,&velocidad_caida,max_cuadros_heroe,&mis_imagenes);
+                r_x=heroe.cuadro_actual*ANCHO_SPRITE;
+                mover_enemigos(mi_nivel.enemigos,mi_nivel.total_enemigos,&mis_imagenes);
+                mover_municion_heroe(heroe.proyectiles,MAX_ITEMS,&mi_nivel);
+            
+                for(i=0;i<mi_nivel.total_enemigos;i++)
+                {
+                mover_municion_enemigos(mi_nivel.enemigos[i].laser_enemigos,MAX_LASERS);
+                }
+
+                recolectar_items(mi_nivel.mis_items,MAX_ITEMS,&mis_imagenes,&mi_nivel);
+                trampitas(&heroe,&velocidad_caida,&mi_nivel);
+                portalito(&heroe,&portal_abierto,&cambiar_nivel,&mis_imagenes,&mi_nivel);
+
+                casilla_x=(heroe.x+20)/TAM_TILE;
+                casilla_y=(heroe.y+20)/TAM_TILE;
+
+                if(casilla_y>=0&&casilla_y<fila&&casilla_x>=0&&casilla_x<columna)
+                {
+                    if(mapa[casilla_y][casilla_x]=='C')
+                    {
+                        heroe.spawn_x=TAM_TILE*casilla_x;
+                        heroe.spawn_y=TAM_TILE*casilla_y;
+                        mapa[casilla_y][casilla_x]='c';
+                        printf("Progreso guardado\n");
+                    }
+
+                    if(mapa[casilla_y][casilla_x]=='L')
+                    {
+                        mapa[casilla_y][casilla_x]='l'; 
+                        al_play_sample(mis_imagenes.sonido_palanca,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                    
+                        for(fil=casilla_y-3;fil<=casilla_y+3;fil++)
                         {
-                            if(fil>=0&&fil<fila&&col>=0&&col<columna) 
+                            for(col=casilla_x-3;col<=casilla_x+3;col++)
                             {
-                                if(mapa[fil][col]=='D') 
+                                if(fil>=0&&fil<fila&&col>=0&&col<columna) 
                                 {
-                                    mapa[fil][col]='A';
+                                    if(mapa[fil][col]=='D') 
+                                    {
+                                        mapa[fil][col]='A';
+                                    }
                                 }
                             }
                         }
+                        al_play_sample(mis_imagenes.sonido_puerta,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                        printf("Palanca activada! Se abrió la puerta.\n");
                     }
-                    al_play_sample(mis_imagenes.sonido_puerta,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
-                    printf("Palanca activada! Se abrió la puerta.\n");
                 }
+
+                if(cambiar_nivel) 
+                {
+                    cambios_de_niveles(&nivel_actual,&corriendo,&portal_abierto,&velocidad_caida,&mi_nivel);
+                    cambiar_nivel=false;
+                }
+                dibujar=true;
             }
 
-            if(cambiar_nivel) 
+            if(dibujar&&al_is_event_queue_empty(queue))
             {
-                cambios_de_niveles(&nivel_actual,&corriendo,&portal_abierto,&velocidad_caida,&mi_nivel);
-                cambiar_nivel=false;
-            }
-            dibujar=true;
-        }
+                dibujar=false;
 
-        if(dibujar&&al_is_event_queue_empty(queue))
-        {
-            dibujar=false;
+                ALLEGRO_BITMAP *img_actual=NULL;
 
-            ALLEGRO_BITMAP *img_actual=NULL;
+                if(heroe.estado==ESTADO_IDLE) 
+                {
+                    img_actual=mis_imagenes.img_idle;
+                }
+                else if(heroe.estado==ESTADO_CAMINAR) 
+                {
+                    img_actual=mis_imagenes.img_caminar;
+                }
+                else if(heroe.estado==ESTADO_SALTO) 
+                {
+                    img_actual=mis_imagenes.img_salto;
+                }
+                else if(heroe.estado==ESTADO_DISPARO) 
+                {
+                    img_actual=mis_imagenes.img_disparo;
+                }
+                else if(heroe.estado==ESTADO_ATAQUE) 
+                {
+                    img_actual=mis_imagenes.img_ataque;
+                }
+                else if(heroe.estado==ESTADO_DANO) 
+                {
+                    img_actual=mis_imagenes.img_dano;
+                }
+                else if(heroe.estado==ESTADO_CORRER) 
+                {
+                    img_actual=mis_imagenes.img_correr;
+                }
+                else if(heroe.estado==ESTADO_RECARGA) 
+                {
+                    img_actual=mis_imagenes.img_recarga;
+                }
+                else if(heroe.estado==ESTADO_MUERTE)
+                {
+                    img_actual=mis_imagenes.img_muerte;
+                }
 
-            if(heroe.estado==ESTADO_IDLE) 
-            {
-                img_actual=mis_imagenes.img_idle;
-            }
-            else if(heroe.estado==ESTADO_CAMINAR) 
-            {
-                img_actual=mis_imagenes.img_caminar;
-            }
-            else if(heroe.estado==ESTADO_SALTO) 
-            {
-                img_actual=mis_imagenes.img_salto;
-            }
-            else if(heroe.estado==ESTADO_DISPARO) 
-            {
-                img_actual=mis_imagenes.img_disparo;
-            }
-            else if(heroe.estado==ESTADO_ATAQUE) 
-            {
-                img_actual=mis_imagenes.img_ataque;
-            }
-            else if(heroe.estado==ESTADO_DANO) 
-            {
-                img_actual=mis_imagenes.img_dano;
-            }
-            else if(heroe.estado==ESTADO_CORRER) 
-            {
-                img_actual=mis_imagenes.img_correr;
-            }
-            else if(heroe.estado==ESTADO_RECARGA) 
-            {
-                img_actual=mis_imagenes.img_recarga;
-            }
-            else if(heroe.estado==ESTADO_MUERTE)
-            {
-                img_actual=mis_imagenes.img_muerte;
-            }
+                if(direccion_mirada==-1.0)
+                {
+                    voltear=ALLEGRO_FLIP_HORIZONTAL;
+                }
+                else
+                {
+                    voltear=0;
+                }
 
-            if(direccion_mirada==-1.0)
-            {
-                voltear=ALLEGRO_FLIP_HORIZONTAL;
-            }
-            else
-            {
-                voltear=0;
-            }
-
-            contexto_dibujo mis_graficos;
-            mis_graficos.catalogo=&mis_imagenes;
-            mis_graficos.img_heroe=img_actual;
-            mis_graficos.r_x=r_x;
-            mis_graficos.espejo=voltear;
-            mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
-            mis_graficos.cuadro_portal=cuadro_animacion_portal;
-            mis_graficos.portal_abierto=portal_abierto;
-            mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
-            mis_graficos.movimiento_items=movimiento_y_items;
-            mis_graficos.nivel = &mi_nivel;
-            mis_graficos.fuente=fuente_texto;
+                contexto_dibujo mis_graficos;
+                mis_graficos.catalogo=&mis_imagenes;
+                mis_graficos.img_heroe=img_actual;
+                mis_graficos.r_x=r_x;
+                mis_graficos.espejo=voltear;
+                mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
+                mis_graficos.cuadro_portal=cuadro_animacion_portal;
+                mis_graficos.portal_abierto=portal_abierto;
+                mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
+                mis_graficos.movimiento_items=movimiento_y_items;
+                mis_graficos.nivel = &mi_nivel;
+                mis_graficos.fuente=fuente_texto;
             
-            dibujar_juego(&mis_graficos);
+                dibujar_juego(&mis_graficos);
+            }
         }
-
+        al_stop_timer(timer);
+        if (programa_completo&&heroe.puntos>0&&strlen(nombre_jugador)>0)
+        {
+            FILE *archivo=fopen("ranking.txt","a");
+            if (archivo!=NULL) 
+            {
+                fprintf(archivo,"%s %d\n",nombre_jugador,heroe.puntos);
+                fclose(archivo);
+            }
+            printf("Puntaje en el ranking!\n");
+            
+            heroe.puntos=0; 
+        }
     }
 
+    al_destroy_font(fuente_titulo);
+    al_destroy_font(fuente_opciones);
+    al_destroy_font(fuente_ranking);
+    al_destroy_font(fuente_nombre);
     limpieza(&mis_imagenes,fuente_texto,timer,queue,display);
 
     return 0;
@@ -2018,7 +2063,7 @@ void animacion_entorno(int *cont_moneda,int *cuad_moneda,float *mov_items,float 
     }
 }
 
-void actualizar_estado_heroe(personaje *h,bool izq,bool der,float *vel_caida,int max_cuadros) 
+void actualizar_estado_heroe(personaje *h,bool izq,bool der,float *vel_caida,int max_cuadros,recursos *imgs) 
 {
     if((*h).tiempo_dano>0) 
     {
@@ -2050,7 +2095,12 @@ void actualizar_estado_heroe(personaje *h,bool izq,bool der,float *vel_caida,int
     if((*h).contador_animacion>=5) 
     {
         (*h).contador_animacion=0;
-        (*h).cuadro_actual++;               
+        (*h).cuadro_actual++;
+        
+        if((*h).estado==ESTADO_CAMINAR&&((*h).cuadro_actual==1||(*h).cuadro_actual==3)) 
+        {
+            al_play_sample((*imgs).sonido_pasos,0.4,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+        }
         
         if((*h).cuadro_actual>=max_cuadros) 
         {
@@ -2229,6 +2279,218 @@ void disparar_proyectil(personaje *h,int tipo_municion,float direccion_mirada,re
         {
             printf("No tienes veneno en el inventario!\n");
         }
+    }
+}
+
+int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue)
+{
+    int mouse_x,mouse_y,i,pos_y,y_max,y_min,x_max,x_min;
+    int opcion_seleccionada=0;
+    int total_opciones=4;
+    char opciones[4][15]={"Jugar","Continuar","Ranking","Salir"};
+    bool en_menu=true;
+
+    al_flush_event_queue(queue);
+
+    while (en_menu) 
+    {
+        ALLEGRO_EVENT evento;
+        al_wait_for_event(queue, &evento);
+
+        if (evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE) 
+        {
+            return 3; 
+        }
+        
+        else if (evento.type == ALLEGRO_EVENT_MOUSE_AXES) 
+        {
+            mouse_x=evento.mouse.x;
+            mouse_y=evento.mouse.y;
+
+            opcion_seleccionada=-1; 
+            
+            for (i=0;i<total_opciones;i++) 
+            {
+                pos_y=(alto_pantalla/2)+i*60; 
+                y_min=pos_y;
+                y_max=pos_y+40; 
+                x_min=(ancho_pantalla/2)-100;
+                x_max=(ancho_pantalla/2)+100;
+                if (mouse_x>=x_min&&mouse_x<= x_max&&mouse_y>=y_min&&mouse_y<= y_max) 
+                {
+                    opcion_seleccionada=i; 
+                }
+            }
+        }
+        else if (evento.type==ALLEGRO_EVENT_MOUSE_BUTTON_DOWN) 
+        {
+            if (evento.mouse.button==1) 
+            {
+                if (opcion_seleccionada!=-1) 
+                {
+                    return opcion_seleccionada; 
+                }
+            }
+        }
+
+        if (al_is_event_queue_empty(queue)) 
+        {
+            al_clear_to_color(al_map_rgb(20,30,50)); 
+            al_draw_text(f_titulo,al_map_rgb(255,255,255),ancho_pantalla/2,alto_pantalla/4,ALLEGRO_ALIGN_CENTER,"AstroKey");
+
+            for (i=0;i<total_opciones;i++) 
+            {
+                ALLEGRO_COLOR color_texto;
+                
+                if (i==opcion_seleccionada) 
+                {
+                    color_texto=al_map_rgb(255,215,0); 
+                    al_draw_text(f_opciones, color_texto,(ancho_pantalla/2)-150,(alto_pantalla/2)+i*60,ALLEGRO_ALIGN_RIGHT,"->");
+                } 
+                else 
+                {
+                    color_texto=al_map_rgb(200,200,200); 
+                }
+                
+                al_draw_text(f_opciones,color_texto,ancho_pantalla/2,(alto_pantalla/2)+i*60,ALLEGRO_ALIGN_CENTER,opciones[i]);
+            }
+
+            al_flip_display();
+        }
+    }
+    return 3;
+}
+
+void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue)
+{
+    int total_registros=0;
+    int i,j;
+    bool en_ranking = true;
+    ranking top[10];
+    ranking temp;
+
+    FILE *archivo=fopen("ranking.txt","r");
+    if(archivo!=NULL) 
+    {
+        while(fscanf(archivo,"%s %d",top[total_registros].nombre,&top[total_registros].puntaje)==2) 
+        {
+            total_registros++;
+            if (total_registros>=10) 
+            {
+                break; 
+            }
+        }
+        fclose(archivo);
+    }
+
+    for (i=0;i<total_registros-1;i++) 
+    {
+        for (j=0;j<total_registros-i-1;j++) 
+        {
+            if (top[j].puntaje<top[j+1].puntaje) 
+            {
+                temp=top[j];
+                top[j]=top[j+ 1];
+                top[j+1]=temp;
+            }
+        }
+    }
+
+    al_flush_event_queue(queue);
+
+    while (en_ranking) 
+    {
+        ALLEGRO_EVENT evento;
+        al_wait_for_event(queue,&evento);
+
+        if (evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE||(evento.type==ALLEGRO_EVENT_KEY_DOWN&&evento.keyboard.keycode==ALLEGRO_KEY_ESCAPE)) 
+        {
+            en_ranking=false;
+        }
+
+        if (al_is_event_queue_empty(queue)) 
+        {
+            al_clear_to_color(al_map_rgb(20,30,50));
+            al_draw_text(f_ranking, al_map_rgb(255, 215, 0),ancho_pantalla/2,100,ALLEGRO_ALIGN_CENTER,"MEJORES PUNTUACIONES");
+            
+            if (total_registros==0) 
+            {
+                al_draw_text(f_ranking,al_map_rgb(255,255,255),ancho_pantalla/2,250,ALLEGRO_ALIGN_CENTER,"No existe el ranking aun.");
+            }
+            else 
+            {
+                for (i=0;i<total_registros;i++) 
+                {
+                    char linea_texto[100];
+                    
+                    snprintf(linea_texto,sizeof(linea_texto),"%d. %s - %d pts",i+1,top[i].nombre,top[i].puntaje);
+                    
+                    al_draw_text(f_ranking,al_map_rgb(255,255,255),ancho_pantalla/2,200+(i*40),ALLEGRO_ALIGN_CENTER,linea_texto);
+                }
+            }
+            
+            al_draw_text(f_ranking,al_map_rgb(150,150,150),ancho_pantalla/2,alto_pantalla-100,ALLEGRO_ALIGN_CENTER,"Presiona ESC para volver");
+            al_flip_display();
+        }
+    }
+}
+
+void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue)
+{
+    int contador_letras=0;
+    char nueva_letra;
+    bool escribiendo_nombre=true;
+
+    al_flush_event_queue(queue);
+
+    while (escribiendo_nombre) 
+    {
+        ALLEGRO_EVENT evento;
+        al_wait_for_event(queue,&evento);
+
+        if (evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE) 
+        {
+            escribiendo_nombre=false;
+        }
+        else if (evento.type==ALLEGRO_EVENT_KEY_CHAR) 
+        {
+            if (evento.keyboard.keycode==ALLEGRO_KEY_ENTER&&contador_letras>0) 
+            {
+                escribiendo_nombre=false;
+            }
+            else if (evento.keyboard.keycode==ALLEGRO_KEY_BACKSPACE&&contador_letras>0) 
+            {
+                contador_letras--;
+                nombre[contador_letras]=0;
+            }
+            else if (evento.keyboard.unichar>=32&&evento.keyboard.unichar<=126&&contador_letras<19) 
+            {
+                if (evento.keyboard.unichar==32) 
+                {
+                    nueva_letra='_';
+                }
+                else 
+                {
+                    nueva_letra=(char)evento.keyboard.unichar;
+                }
+                snprintf(&nombre[contador_letras],20-contador_letras,"%c",nueva_letra);
+                contador_letras++;
+            }
+        }
+
+        if (al_is_event_queue_empty(queue)) 
+        {
+            al_clear_to_color(al_map_rgb(20,30,50));
+            al_draw_text(f_nombre,al_map_rgb(255,215,0),ancho_pantalla/2,200,ALLEGRO_ALIGN_CENTER,"NUEVA PARTIDA");
+            al_draw_text(f_nombre,al_map_rgb(200,200,200),ancho_pantalla/2,400,ALLEGRO_ALIGN_CENTER,"Ingresa tu nombre para jugar y presiona ENTER:");
+            al_draw_text(f_nombre,al_map_rgb(100,255,100),ancho_pantalla/2,500,ALLEGRO_ALIGN_CENTER,nombre);
+            al_flip_display();
+        }
+    }
+
+    if (contador_letras==0) 
+    {
+        strcpy(nombre,"Jugador");
     }
 }
 
@@ -2546,7 +2808,6 @@ void limpieza(recursos *imgs,ALLEGRO_FONT *fuente,ALLEGRO_TIMER *timer,ALLEGRO_E
     al_destroy_bitmap((*imgs).img_basico);
     al_destroy_bitmap((*imgs).pocion_vida);
     al_destroy_bitmap((*imgs).textura_luna);
-    al_destroy_bitmap((*imgs).textura_metal);
     al_destroy_bitmap((*imgs).alien5);
     al_destroy_bitmap((*imgs).veneno);
     al_destroy_bitmap((*imgs).llave_final);
@@ -2561,7 +2822,6 @@ void limpieza(recursos *imgs,ALLEGRO_FONT *fuente,ALLEGRO_TIMER *timer,ALLEGRO_E
     al_destroy_bitmap((*imgs).palanca);
     al_destroy_bitmap((*imgs).door);
     al_destroy_bitmap((*imgs).intenemy);
-    
     al_destroy_sample((*imgs).disparo_prota);
     al_destroy_sample((*imgs).disparo_alien5);
     al_destroy_sample((*imgs).disparo_alien6);
@@ -2574,7 +2834,6 @@ void limpieza(recursos *imgs,ALLEGRO_FONT *fuente,ALLEGRO_TIMER *timer,ALLEGRO_E
     al_destroy_sample((*imgs).sonido_palanca);
     al_destroy_sample((*imgs).sonido_puerta);
     al_destroy_sample((*imgs).sonido_pasos);
-    
     al_destroy_font(fuente);
     al_destroy_timer(timer);
     al_destroy_event_queue(queue);
