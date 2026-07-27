@@ -14,7 +14,7 @@
 #define alto_pantalla 1080
 #define ancho_pantalla 1920
 #define MAX_ENEMIGOS 10
-#define MAX_LASERS 2
+#define MAX_LASERS 5
 #define ANCHO_SPRITE 128.0
 #define ALTO_SPRITE 128.0
 #define TAM_DIBUJO 80.0
@@ -52,6 +52,7 @@ enum Tipo_Item
     ITEM_LLAVE_AMARILLA,
     ITEM_LLAVE_VERDE,
     ITEM_VENENO,
+    ITEM_BOMBA,
     ITEM_PUNTOS
 };
 
@@ -132,6 +133,7 @@ typedef struct item_ item;
 
 struct recursos_
 {
+    ALLEGRO_BITMAP *fondo_menu;
     ALLEGRO_BITMAP *fondo_nivel1;
     ALLEGRO_BITMAP *img_ataque;
     ALLEGRO_BITMAP *img_dano;
@@ -159,7 +161,9 @@ struct recursos_
     ALLEGRO_BITMAP *llave_amarilla;
     ALLEGRO_BITMAP *door;
     ALLEGRO_BITMAP *intenemy;
+    ALLEGRO_BITMAP *boss;
     ALLEGRO_BITMAP *checkpoint;
+    ALLEGRO_BITMAP *bombita;
     ALLEGRO_SAMPLE *disparo_prota;
     ALLEGRO_SAMPLE *disparo_alien5;
     ALLEGRO_SAMPLE *disparo_alien6;
@@ -187,6 +191,10 @@ struct estado_juego_
     int secuencia_llaves[10];
     int total_llaves_secuencia;
     int indice_llave_actual;
+    int cuadro_portal;
+    int contador_portal;
+    int total_venenos_bombas;
+    int recolectados_venenos_bombas;
     float x_portal;
     float y_portal;
     bool portal_activo;
@@ -198,9 +206,11 @@ struct contexto_dibujo_
     int espejo;
     int cuadro_moneda;
     int cuadro_portal;
+    int temporizador_suelo;
     float r_x;
     float movimiento_items;
     bool portal_abierto;
+    bool suelo_destruido;
     recursos *catalogo;
     estado_juego *nivel;
     ALLEGRO_BITMAP *img_heroe; 
@@ -218,7 +228,7 @@ typedef struct ranking_ ranking;
 char mapa[fila][columna];
 personaje heroe;
 
-int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue);
+int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
 void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base);
 void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_inicial);
 void mover_personaje(personaje *p,bool izq, bool der,float *vel_caida);
@@ -234,11 +244,11 @@ void trampitas(personaje *h,float *vel_caida,estado_juego *nivel);
 void portalito(personaje *h,bool *portal_abierto,bool *cambiar_nivel,recursos *imgs,estado_juego *nivel);
 void cambios_de_niveles(int *nivel_actual,bool *corriendo,bool *portal_abierto,float *vel_caida,estado_juego *nivel);
 void disparar_proyectil(personaje *h,int tipo_municion,float direccion_mirada,recursos *imgs);
-void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue);
-void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue);
-bool cargar_mapa(const char *nombre_archivo, estado_juego *nivel);
+void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
+void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
+void mostrar_controles(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_texto,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
+bool cargar_mapa(const char *nombre_archivo,estado_juego *nivel);
 bool colision(float x,float y);
-bool cargar_mapa(const char *nombre_archivo, estado_juego *nivel);
 bool colision_lasers(float x,float y);
 bool cargar_recursos(recursos *imgs);
 
@@ -258,8 +268,6 @@ int main()
     int max_cuadros_heroe=5;
     int cuadro_animacion_moneda=0;
     int contador_animacion_moneda=0;
-    int cuadro_animacion_portal=0;
-    int contador_animacion_portal=0;
     int nivel_actual=1;
     float x_bloque,y_bloque;
     float velocidad_caida=0.0;
@@ -274,6 +282,7 @@ int main()
     mi_nivel.total_enemigos=0;
     mi_nivel.luz_apagada=0;
     mi_nivel.portal_activo=false;
+    
 
     for(i=0;i<MAX_TRAMPAS;i++) 
     {
@@ -329,21 +338,21 @@ int main()
         corriendo=false;
         while(menu)
         {
-            seleccion=mostrar_menu(display,fuente_titulo,fuente_opciones,queue);
+            seleccion=mostrar_menu(display,fuente_titulo,fuente_opciones,queue,&mis_imagenes);
         
             if(seleccion==0)
             {
-                pedir_nombre(nombre_jugador,display,fuente_nombre,queue);
+                pedir_nombre(nombre_jugador,display,fuente_nombre,queue,&mis_imagenes);
                 corriendo=true;
                 menu=false;
             }
             if(seleccion==1)
             {
-                break;
+                mostrar_controles(display,fuente_opciones,queue,&mis_imagenes);
             }
             if(seleccion==2)
             {
-                el_ranking(display,fuente_ranking,queue);
+                el_ranking(display,fuente_ranking,queue,&mis_imagenes);
             }
             if(seleccion==3)
             {
@@ -444,6 +453,7 @@ int main()
                 recolectar_items(mi_nivel.mis_items,MAX_ITEMS,&mis_imagenes,&mi_nivel);
                 trampitas(&heroe,&velocidad_caida,&mi_nivel);
                 portalito(&heroe,&portal_abierto,&cambiar_nivel,&mis_imagenes,&mi_nivel);
+                animacion_entorno(&contador_animacion_moneda,&cuadro_animacion_moneda,&movimiento_y_items,&velocidad_flotacion);
 
                 casilla_x=(heroe.x+20)/TAM_TILE;
                 casilla_y=(heroe.y+20)/TAM_TILE;
@@ -547,7 +557,7 @@ int main()
                 mis_graficos.r_x=r_x;
                 mis_graficos.espejo=voltear;
                 mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
-                mis_graficos.cuadro_portal=cuadro_animacion_portal;
+                mis_graficos.cuadro_portal=mi_nivel.cuadro_portal;
                 mis_graficos.portal_abierto=portal_abierto;
                 mis_graficos.cuadro_moneda=cuadro_animacion_moneda; 
                 mis_graficos.movimiento_items=movimiento_y_items;
@@ -613,7 +623,7 @@ bool colision(float x,float y)
         return true;
     }
 
-    if (mapa[aba][der]=='1'||mapa[aba][der]=='D'||mapa[aba][der]=='3'||mapa[aba][der]=='S') 
+    if (mapa[aba][der]=='1'||mapa[aba][der]=='D'||mapa[aba][der]=='3'||mapa[aba][der]=='$') 
     {
         return true;
     }
@@ -626,6 +636,9 @@ bool cargar_mapa(const char *nombre_archivo, estado_juego *nivel)
     int i,j,k;
     char estado_luz;
     char texto_secuencia[20];
+    (*nivel).total_venenos_bombas=0;
+    (*nivel).total_venenos_bombas=0;
+
     FILE *archivo=fopen(nombre_archivo, "r");
 
     if(archivo==NULL)
@@ -897,10 +910,11 @@ void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_
 
     if(tipo_char=='9')
     {
-        (*villano).vida=250;
-        (*villano).velocidad=3.0;
-        (*villano).herida=35;
-        (*villano).alcance=100;
+        (*villano).vida = 2000;
+        (*villano).velocidad = 2.0;
+        (*villano).herida = 40;
+        (*villano).alcance = 600;
+        (*villano).energia = 0;
     }
 }
 
@@ -948,10 +962,11 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos)
 {
     int max_cuadros=8;
     int limite_cuadros=8;
-    int i,j,frente_x,pies_y; 
+    int i,j,frente_x,pies_y,check_x,check_y; 
     float dist_x_abs,dist_y_abs,dist_x,dist_y;
     bool puede_moverse;
     bool heroe_en_rango;
+    bool es_puerta;
 
     for(i=0;i<total;i++)
     {
@@ -991,38 +1006,67 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos)
                 if(heroe_en_rango)
                 {
                     ejercito[i].ataque=true;
-                    if (dist_x>0)
+                    if(dist_x>0) 
+                    { 
+                        ejercito[i].direccion_mirada=1.0; 
+                    }
+                    else 
+                    { 
+                        ejercito[i].direccion_mirada=-1.0; 
+                    }
+
+                    if(dist_x_abs>1.5) 
                     {
-                        ejercito[i].direccion_mirada=1.0;
+                        if(dist_x > 0) 
+                        { 
+                            ejercito[i].velocidad=1.0; 
+                        }
+                        else 
+                        { 
+                            ejercito[i].velocidad=-1.0; 
+                        }
                     }
                     else
                     {
-                        ejercito[i].direccion_mirada=-1.0;
+                        ejercito[i].velocidad=0.0; 
                     }
-                }
-
-                if(heroe_en_rango)
-                {
-                    ejercito[i].ataque=true;
                 }
                 else
                 {
                     ejercito[i].ataque=false;
-                    if(dist_x>0)
+                    if(ejercito[i].velocidad==0.0) 
                     {
-                        ejercito[i].velocidad=1.0;
-                    }
-                    else
-                    {
-                        ejercito[i].velocidad=-1.0;
-                    }
-
-                    if (colision(ejercito[i].x+(ejercito[i].velocidad*5.0),ejercito[i].y)&&ejercito[i].velocidad_y==0.0) 
-                    {
-                        ejercito[i].velocidad_y =-9.0;
+                        ejercito[i].velocidad=1.0; 
                     }
                 }
 
+                if (ejercito[i].velocidad>0) 
+                {
+                    check_x=(ejercito[i].x+45.0)/TAM_TILE;
+                } 
+                else 
+                {
+                    check_x=(ejercito[i].x-5.0)/TAM_TILE;
+                }
+                check_y=(ejercito[i].y+20.0)/TAM_TILE;
+                es_puerta=false;
+
+                if(check_y>=0&&check_y<fila&&check_x>=0&&check_x<columna)
+                {
+                    if(mapa[check_y][check_x]=='D'||mapa[check_y][check_x]=='A')
+                    {
+                        es_puerta=true;
+                    }
+                }
+
+                if (es_puerta)
+                {
+                    ejercito[i].velocidad=-ejercito[i].velocidad;
+                }
+                else if(colision(ejercito[i].x+(ejercito[i].velocidad*5.0),ejercito[i].y)&&ejercito[i].velocidad_y==0.0&&!es_puerta)
+                {
+                    ejercito[i].velocidad_y=-9.0;
+                }
             }
             
             else if(ejercito[i].tipo=='5')
@@ -1061,8 +1105,10 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos)
                             if(!ejercito[i].laser_enemigos[j].activo)
                             {
                                 ejercito[i].laser_enemigos[j].activo=true;
-                                ejercito[i].laser_enemigos[j].x=ejercito[i].x+20;
-                                ejercito[i].laser_enemigos[j].y=ejercito[i].y+15;
+                                ejercito[i].laser_enemigos[j].tipo=MUNICION_LASER;
+                                ejercito[i].laser_enemigos[j].distancia_recorrida=0.0;
+                                ejercito[i].laser_enemigos[j].x = ejercito[i].x + 20;
+                                ejercito[i].laser_enemigos[j].y = ejercito[i].y + 15;
                                 ejercito[i].laser_enemigos[j].velocidad_x=10.0*ejercito[i].direccion_mirada;
                                 al_play_sample((*sonidos).disparo_alien5,0.8,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                 break;
@@ -1148,8 +1194,17 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos)
                                 if(!ejercito[i].laser_enemigos[j].activo)
                                 {
                                     ejercito[i].laser_enemigos[j].activo=true;
-                                    ejercito[i].laser_enemigos[j].x=ejercito[i].x+20;
-                                    ejercito[i].laser_enemigos[j].y=ejercito[i].y+10;
+                                    ejercito[i].laser_enemigos[j].tipo=MUNICION_LASER;
+                                    ejercito[i].laser_enemigos[j].distancia_recorrida=0.0;
+                                    if(ejercito[i].direccion_mirada==1.0) 
+                                    {
+                                        ejercito[i].laser_enemigos[j].x=ejercito[i].x+45; 
+                                    } 
+                                    else 
+                                    {
+                                        ejercito[i].laser_enemigos[j].x=ejercito[i].x-5;  
+                                    }
+                                    ejercito[i].laser_enemigos[j].y = ejercito[i].y+16;
                                     ejercito[i].laser_enemigos[j].velocidad_x=15.0*ejercito[i].direccion_mirada; 
                                     al_play_sample((*sonidos).disparo_alien6,0.8,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                     break;
@@ -1168,7 +1223,7 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos)
                     }
                 }
 
-                if(ejercito[i].energia > 0) 
+                if(ejercito[i].energia>0) 
                 {
                     ejercito[i].energia--;
                 }
@@ -1185,7 +1240,7 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos)
 
                 if(pies_y<fila&&frente_x>=0&&frente_x<columna)
                 {
-                    if(mapa[pies_y][frente_x]!='1'&&mapa[pies_y][frente_x]!='3'||colision(ejercito[i].x+ejercito[i].velocidad,ejercito[i].y))
+                    if((mapa[pies_y][frente_x]!='1'&&mapa[pies_y][frente_x]!='3'&&mapa[pies_y][frente_x]!='$')||colision(ejercito[i].x+ejercito[i].velocidad,ejercito[i].y))
                     {
                         ejercito[i].velocidad=-ejercito[i].velocidad;
                     }
@@ -1507,6 +1562,7 @@ void dibujar_juego(contexto_dibujo *graficos)
     float x_bloque,y_bloque,ajuste_y_alien5,ajuste_piso,ancho_dibujo_alien,alto_dibujo_alien,ajuste_x_centro,ajuste_centro,y_flotante;
     float centro_x,centro_y,radio_vision,grosor_oscuridad,mini_tile,pos_mapa_x,pos_mapa_y,rect_x,rect_y,mini_enemigo_x,mini_enemigo_y;
     float mini_portal_x,mini_portal_y,mini_heroe_x,mini_heroe_y,x_actual,ancho_llave,espaciado,total_ancho,pos_x_llaves,pos_y_llaves;
+    float mini_item_x,mini_item_y;
     float ancho_dibujo=60.0;
     float alto_dibujo=85.0;
     float ajuste_x=(ancho_dibujo-40.0)/2.0; 
@@ -1609,8 +1665,8 @@ void dibujar_juego(contexto_dibujo *graficos)
         { 
             if((*imgs).img_basico!=NULL)
             {
-                int espejo_enemigo=0;
-                int fila_y=0;
+                espejo_enemigo=0;
+                fila_y=0;
                 if(enemigos[i].direccion_mirada==-1.0)
                 {
                     espejo_enemigo=ALLEGRO_FLIP_HORIZONTAL;
@@ -1656,17 +1712,17 @@ void dibujar_juego(contexto_dibujo *graficos)
                 espejo_enemigo = ALLEGRO_FLIP_HORIZONTAL;
             }
 
-            ancho_frame = 48; 
-            alto_frame = 48; 
+            ancho_frame=48; 
+            alto_frame=48; 
             recorte_x=enemigos[i].cuadro_actual*48;
-            recorte_y = 0;
+            recorte_y=0;
 
-            if(enemigos[i].estado == ESTADO_IDLE) 
+            if(enemigos[i].estado==ESTADO_IDLE) 
             {
                 recorte_y=0;
                 ajuste_piso=20.0;
             }
-            else if(enemigos[i].estado == ESTADO_CAMINAR) 
+            else if(enemigos[i].estado==ESTADO_CAMINAR) 
             {
                 recorte_y=42;  
                 ajuste_piso=14.0;
@@ -1692,37 +1748,79 @@ void dibujar_juego(contexto_dibujo *graficos)
         if(enemigos[i].tipo=='6'&&(*imgs).intenemy!=NULL) 
         {
             espejo_enemigo=0;
-            ancho_frame=64;
-            alto_frame=70;
-            fila_y_alien6;
-            ajuste_piso=3.0;
-            if(enemigos[i].direccion_mirada==-1.0)
+            if(enemigos[i].direccion_mirada==-1.0) 
             {
                 espejo_enemigo=ALLEGRO_FLIP_HORIZONTAL;
             }
+            ancho_frame=64; 
+            alto_frame=70; 
+            recorte_x=enemigos[i].cuadro_actual*ancho_frame;
+            recorte_y=0;
+
             if(enemigos[i].estado==ESTADO_IDLE) 
             {
-                fila_y_alien6=0;
+                recorte_y=0;    
+                ajuste_piso=3.0;
             }
             else if(enemigos[i].estado==ESTADO_CAMINAR) 
             {
-                fila_y_alien6=1;
+                recorte_y=70;
+                ajuste_piso = 3.0; 
             }
             else if(enemigos[i].estado==ESTADO_ATAQUE) 
             {
-                fila_y_alien6=2;
+                recorte_y=120;  
+                ajuste_piso=18.0; 
             }
             else if(enemigos[i].estado==ESTADO_MUERTE) 
             {
-                fila_y_alien6=4;
+                recorte_y=280;  
+                ajuste_piso=-8.0; 
             }
-            recorte_x=enemigos[i].cuadro_actual*ancho_frame;
-            recorte_y=fila_y_alien6*alto_frame;
-            al_draw_scaled_bitmap((*imgs).intenemy,recorte_x,recorte_y,ancho_frame,alto_frame,enemigos[i].x-ajuste_alien_x,enemigos[i].y-ajuste_piso,64,70,espejo_enemigo);
+            ancho_dibujo=64.0;
+            alto_dibujo=70.0;
+            ajuste_centro=ajuste_alien_x; 
+
+            al_draw_scaled_bitmap((*imgs).intenemy,recorte_x,recorte_y,ancho_frame,alto_frame,enemigos[i].x-ajuste_centro,enemigos[i].y-ajuste_piso,ancho_dibujo,alto_dibujo,espejo_enemigo);
         }
-        if(enemigos[i].tipo=='9') 
+
+        if(enemigos[i].tipo=='9'&&(*imgs).boss!=NULL)
         {
-            al_draw_scaled_bitmap((*imgs).intenemy,recorte_x,recorte_y,ancho_frame,alto_frame,enemigos[i].x-ajuste_alien_x,enemigos[i].y-15.0,64,70,espejo_enemigo);
+            espejo_enemigo=0;
+            if(enemigos[i].direccion_mirada==-1.0) 
+            {
+                espejo_enemigo=ALLEGRO_FLIP_HORIZONTAL;
+            }
+            ancho_frame=48; 
+            alto_frame=48; 
+            recorte_x=enemigos[i].cuadro_actual*ancho_frame;
+            recorte_y=0;
+
+            if(enemigos[i].estado==ESTADO_IDLE) 
+            {
+                recorte_y=0;    
+                ajuste_piso=3.0;
+            }
+            else if(enemigos[i].estado==ESTADO_CAMINAR) 
+            {
+                recorte_y=70;
+                ajuste_piso = 3.0; 
+            }
+            else if(enemigos[i].estado==ESTADO_ATAQUE) 
+            {
+                recorte_y=120;  
+                ajuste_piso=18.0; 
+            }
+            else if(enemigos[i].estado==ESTADO_MUERTE) 
+            {
+                recorte_y=280;  
+                ajuste_piso=-8.0; 
+            }
+            ancho_dibujo=64.0;
+            alto_dibujo=70.0;
+            ajuste_centro=ajuste_alien_x; 
+
+            al_draw_scaled_bitmap((*imgs).boss,recorte_x,recorte_y,ancho_frame,alto_frame,enemigos[i].x-ajuste_centro,enemigos[i].y-ajuste_piso,ancho_dibujo,alto_dibujo,espejo_enemigo);
         }
     }
 
@@ -1789,9 +1887,9 @@ void dibujar_juego(contexto_dibujo *graficos)
         {
             if(heroe.proyectiles[i].tipo == MUNICION_LASER)
             {
-                al_draw_filled_rectangle(heroe.proyectiles[i].x, heroe.proyectiles[i].y, heroe.proyectiles[i].x+15, heroe.proyectiles[i].y+5, al_map_rgb(255,0,0));
+                al_draw_filled_rectangle(heroe.proyectiles[i].x,heroe.proyectiles[i].y,heroe.proyectiles[i].x+15,heroe.proyectiles[i].y+5,al_map_rgb(255,0,0));
             }
-            else if(heroe.proyectiles[i].tipo == MUNICION_VENENO && (*imgs).veneno != NULL)
+            else if(heroe.proyectiles[i].tipo==MUNICION_VENENO&&(*imgs).veneno!=NULL)
             {
                 al_draw_scaled_bitmap((*imgs).veneno,0,0,al_get_bitmap_width((*imgs).veneno),al_get_bitmap_height((*imgs).veneno),heroe.proyectiles[i].x,heroe.proyectiles[i].y,30,30,0);
             }
@@ -1860,6 +1958,32 @@ void dibujar_juego(contexto_dibujo *graficos)
         mini_portal_x=pos_mapa_x+(x_portal/TAM_TILE)*mini_tile;
         mini_portal_y=pos_mapa_y+(y_portal/TAM_TILE)*mini_tile;
         al_draw_filled_rectangle(mini_portal_x,mini_portal_y,mini_portal_x+mini_tile,mini_portal_y+mini_tile,al_map_rgb(200,0,255));
+    }
+
+    for(i = 0; i < MAX_ITEMS; i++) 
+    {
+        if((*n).mis_items[i].activo) 
+        {
+            mini_item_x=pos_mapa_x+((*n).mis_items[i].x/TAM_TILE)*mini_tile;
+            mini_item_y=pos_mapa_y+((*n).mis_items[i].y/TAM_TILE)*mini_tile;
+            
+            if((*n).mis_items[i].tipo==ITEM_LLAVE_ROJA) 
+            {
+                al_draw_filled_rectangle(mini_item_x,mini_item_y,mini_item_x+mini_tile,mini_item_y+mini_tile,al_map_rgb(255,0,0));
+            } 
+            else if((*n).mis_items[i].tipo==ITEM_LLAVE_VERDE) 
+            {
+                al_draw_filled_rectangle(mini_item_x,mini_item_y,mini_item_x+mini_tile,mini_item_y+mini_tile,al_map_rgb(0,255,0));
+            } 
+            else if((*n).mis_items[i].tipo==ITEM_LLAVE_AMARILLA) 
+            {
+                al_draw_filled_rectangle(mini_item_x,mini_item_y,mini_item_x+mini_tile,mini_item_y+mini_tile,al_map_rgb(255,255,0));
+            } 
+            else if((*n).mis_items[i].tipo==ITEM_LLAVE_AZUL) 
+            {
+                al_draw_filled_rectangle(mini_item_x,mini_item_y,mini_item_x+mini_tile,mini_item_y+mini_tile,al_map_rgb(0,150,255));
+            }
+        }
     }
 
     mini_heroe_x=pos_mapa_x+(heroe.x/TAM_TILE)*mini_tile;
@@ -1965,7 +2089,7 @@ bool colision_lasers(float x,float y)
 
 void recolectar_items(item lista_items[],int maximo,recursos *sonidos, estado_juego *nivel)
 {
-    int i,j,llave_esperada;
+    int i,j,k,llave_esperada;
     bool guardado;
     for(i=0;i<maximo;i++)
     {
@@ -1989,6 +2113,7 @@ void recolectar_items(item lista_items[],int maximo,recursos *sonidos, estado_ju
                     }
                     printf("Vida recogida, vida actual: %d\n",heroe.vida);
                     al_play_sample((*sonidos).sonido_vida,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                    lista_items[i].activo=false;
                 }
                 else if(lista_items[i].tipo==ITEM_VENENO||lista_items[i].tipo==ITEM_LLAVE_ROJA||lista_items[i].tipo==ITEM_LLAVE_VERDE||lista_items[i].tipo==ITEM_LLAVE_AMARILLA||lista_items[i].tipo==ITEM_LLAVE_AZUL)
                 {
@@ -2005,14 +2130,28 @@ void recolectar_items(item lista_items[],int maximo,recursos *sonidos, estado_ju
                     {
                         if(heroe.inventario[j]==0)
                         {
-                            heroe.inventario[j] = lista_items[i].tipo; 
+                            heroe.inventario[j]=lista_items[i].tipo; 
                             printf("Objeto guardado en el bolsillo %d\n", j);
                             lista_items[i].activo=false; 
                             guardado=true;
-                            if(lista_items[i].tipo==ITEM_VENENO) 
+                            if(lista_items[i].tipo==ITEM_VENENO||lista_items[i].tipo==ITEM_BOMBA) 
                             {
                                 al_play_sample((*sonidos).sonido_equipar,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
-                            } 
+                                
+                                (*nivel).recolectados_venenos_bombas++;
+                                
+                                if((*nivel).recolectados_venenos_bombas>=(*nivel).total_venenos_bombas)
+                                {
+                                    printf("El jefe se ha debilitado por las bombas y venenos!\n");
+                                    for(k=0;k<(*nivel).total_enemigos;k++)
+                                    {
+                                        if((*nivel).enemigos[k].tipo=='9') 
+                                        {
+                                            (*nivel).enemigos[k].vida=500;
+                                        }
+                                    }
+                                }
+                            }
                             else 
                             {
                                 (*nivel).indice_llave_actual++;
@@ -2031,14 +2170,15 @@ void recolectar_items(item lista_items[],int maximo,recursos *sonidos, estado_ju
                     heroe.puntos+=lista_items[i].valor;
                     printf("Punto recogido, puntuación: %d\n",heroe.puntos);
                     al_play_sample((*sonidos).sonido_moneda,0.7,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                    lista_items[i].activo=false;
                 }
                 else if(lista_items[i].tipo==ITEM_MUNICION)
                 {
                     heroe.municion+=lista_items[i].valor;
                     printf("Munición recogida, tienes %d tiros.\n",heroe.municion);
                     al_play_sample((*sonidos).sonido_municion,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                    lista_items[i].activo=false;
                 }
-                lista_items[i].activo = false;
             }
         }
     }
@@ -2150,25 +2290,37 @@ void portalito(personaje *h,bool *portal_abierto,bool *cambiar_nivel,recursos *i
 
     if(portal_activo) 
     {
-        if((*h).x<x_portal+TAM_TILE&&(*h).x+40>x_portal&&(*h).y<y_portal+TAM_TILE&&(*h).y+40>y_portal-TAM_TILE) 
+        (*nivel).contador_portal++;
+        if((*nivel).contador_portal>=5) 
         {
-            if(!(*portal_abierto)) 
+            (*nivel).contador_portal=0;
+            (*nivel).cuadro_portal++;
+            if((*nivel).cuadro_portal>=4) 
             {
-                if((*nivel).indice_llave_actual==(*nivel).total_llaves_secuencia&&(*nivel).total_llaves_secuencia>0) 
+                (*nivel).cuadro_portal=0;
+            }
+        }
+
+        if(!(*portal_abierto)) 
+        {
+            if((*nivel).indice_llave_actual==(*nivel).total_llaves_secuencia&&(*nivel).total_llaves_secuencia>0) 
+            {
+                *portal_abierto=true;
+                al_play_sample((*imgs).sonido_portal,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
+                printf("Todas las llaves recogidas, portal activado.\n");
+                for(i=0;i<MAX_COSAS;i++) 
                 {
-                    *portal_abierto=true;
-                    al_play_sample((*imgs).sonido_portal,1.0,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
-                    printf("Todas las llaves insertadas en orden, portal activado.\n");
-                    for(i=0;i<MAX_COSAS;i++) 
+                    if((*h).inventario[i]==ITEM_LLAVE_ROJA||(*h).inventario[i]==ITEM_LLAVE_VERDE||(*h).inventario[i]==ITEM_LLAVE_AMARILLA||(*h).inventario[i]==ITEM_LLAVE_AZUL) 
                     {
-                        if((*h).inventario[i]==ITEM_LLAVE_ROJA||(*h).inventario[i]==ITEM_LLAVE_VERDE||(*h).inventario[i]==ITEM_LLAVE_AMARILLA||(*h).inventario[i]==ITEM_LLAVE_AZUL) 
-                        {
-                            (*h).inventario[i]=0; 
-                        }
+                        (*h).inventario[i]=0; 
                     }
                 }
             }
-            else
+        }
+
+        if((*h).x<x_portal+TAM_TILE&&(*h).x+40>x_portal&&(*h).y<y_portal+TAM_TILE&&(*h).y+40>y_portal-TAM_TILE) 
+        {
+            if(*portal_abierto)
             {
                 printf("Portal alcanzado, nivel completado.\n");
                 *cambiar_nivel=true;
@@ -2282,12 +2434,12 @@ void disparar_proyectil(personaje *h,int tipo_municion,float direccion_mirada,re
     }
 }
 
-int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue)
+int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
 {
     int mouse_x,mouse_y,i,pos_y,y_max,y_min,x_max,x_min;
     int opcion_seleccionada=0;
     int total_opciones=4;
-    char opciones[4][15]={"Jugar","Continuar","Ranking","Salir"};
+    char opciones[4][15]={"Jugar","Controles","Ranking","Salir"};
     bool en_menu=true;
 
     al_flush_event_queue(queue);
@@ -2336,6 +2488,10 @@ int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f
         if (al_is_event_queue_empty(queue)) 
         {
             al_clear_to_color(al_map_rgb(20,30,50)); 
+            if ((*imgs).fondo_menu != NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).fondo_menu,0,0,al_get_bitmap_width((*imgs).fondo_menu),al_get_bitmap_height((*imgs).fondo_menu),0,0,ancho_pantalla,alto_pantalla,0);
+            }
             al_draw_text(f_titulo,al_map_rgb(255,255,255),ancho_pantalla/2,alto_pantalla/4,ALLEGRO_ALIGN_CENTER,"AstroKey");
 
             for (i=0;i<total_opciones;i++) 
@@ -2361,7 +2517,7 @@ int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f
     return 3;
 }
 
-void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue)
+void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
 {
     int total_registros=0;
     int i,j;
@@ -2411,6 +2567,10 @@ void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_Q
         if (al_is_event_queue_empty(queue)) 
         {
             al_clear_to_color(al_map_rgb(20,30,50));
+            if ((*imgs).fondo_menu!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).fondo_menu,0,0,al_get_bitmap_width((*imgs).fondo_menu),al_get_bitmap_height((*imgs).fondo_menu),0,0,ancho_pantalla,alto_pantalla,0);
+            }
             al_draw_text(f_ranking, al_map_rgb(255, 215, 0),ancho_pantalla/2,100,ALLEGRO_ALIGN_CENTER,"MEJORES PUNTUACIONES");
             
             if (total_registros==0) 
@@ -2435,7 +2595,7 @@ void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_Q
     }
 }
 
-void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue)
+void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
 {
     int contador_letras=0;
     char nueva_letra;
@@ -2481,6 +2641,10 @@ void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,A
         if (al_is_event_queue_empty(queue)) 
         {
             al_clear_to_color(al_map_rgb(20,30,50));
+            if ((*imgs).fondo_menu!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).fondo_menu,0,0,al_get_bitmap_width((*imgs).fondo_menu),al_get_bitmap_height((*imgs).fondo_menu),0,0,ancho_pantalla,alto_pantalla,0);
+            }
             al_draw_text(f_nombre,al_map_rgb(255,215,0),ancho_pantalla/2,200,ALLEGRO_ALIGN_CENTER,"NUEVA PARTIDA");
             al_draw_text(f_nombre,al_map_rgb(200,200,200),ancho_pantalla/2,400,ALLEGRO_ALIGN_CENTER,"Ingresa tu nombre para jugar y presiona ENTER:");
             al_draw_text(f_nombre,al_map_rgb(100,255,100),ancho_pantalla/2,500,ALLEGRO_ALIGN_CENTER,nombre);
@@ -2494,8 +2658,50 @@ void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,A
     }
 }
 
+void mostrar_controles(ALLEGRO_DISPLAY *display, ALLEGRO_FONT *f_texto, ALLEGRO_EVENT_QUEUE *queue, recursos *imgs)
+{
+    bool en_controles=true;
+    al_flush_event_queue(queue);
+
+    while(en_controles) 
+    {
+        ALLEGRO_EVENT evento;
+        al_wait_for_event(queue,&evento);
+
+        if(evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE||(evento.type==ALLEGRO_EVENT_KEY_DOWN&&evento.keyboard.keycode==ALLEGRO_KEY_ESCAPE)) 
+        {
+            en_controles=false;
+        }
+
+        if (al_is_event_queue_empty(queue)) 
+        {
+            al_clear_to_color(al_map_rgb(20,30,50));
+            if ((*imgs).fondo_menu!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).fondo_menu,0,0,al_get_bitmap_width((*imgs).fondo_menu),al_get_bitmap_height((*imgs).fondo_menu),0,0,ancho_pantalla,alto_pantalla,0);
+            }
+            
+            al_draw_text(f_texto,al_map_rgb(255,215,0),ancho_pantalla/2,100,ALLEGRO_ALIGN_CENTER,"CONTROLES DEL JUEGO");
+            
+            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,250,ALLEGRO_ALIGN_CENTER,"Flecha Izquierda/Derecha: Moverse");
+            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,300,ALLEGRO_ALIGN_CENTER, "Flecha Arriba : Saltar");
+            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,350,ALLEGRO_ALIGN_CENTER,"Barra Espaciadora : Disparar Laser");
+            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,400,ALLEGRO_ALIGN_CENTER,"Tecla V: Lanzar Veneno");
+            al_draw_text(f_texto, al_map_rgb(150, 150, 150), ancho_pantalla / 2, alto_pantalla - 100, ALLEGRO_ALIGN_CENTER, "Presiona ESC para volver al menu");
+            
+            al_flip_display();
+        }
+    }
+}
+
 bool cargar_recursos(recursos *imgs)
 {
+    (*imgs).fondo_menu=al_load_bitmap("fondo_menu.png");
+    if(!(*imgs).fondo_menu)
+    {
+        printf("Error fatal: No se encontro 'fondo_menu.png'\n");
+        return false;
+    }
     (*imgs).fondo_nivel1 = al_load_bitmap("Fondo1.png");
     if(!(*imgs).fondo_nivel1)
     { 
@@ -2685,10 +2891,24 @@ bool cargar_recursos(recursos *imgs)
         return false;
     }
 
+    (*imgs).boss=al_load_bitmap("alienboss.png");
+    if(!(*imgs).boss)
+    {
+        printf("Error fatal: No se encontro 'alienboss.png'\n");
+        return false;
+    }
+
     (*imgs).checkpoint=al_load_bitmap("checkpoint.png");
     if(!(*imgs).checkpoint)
     {
         printf("Error fatal: No se encontro 'checkpoint.png'\n");
+        return false;
+    }
+
+    (*imgs).bombita=al_load_bitmap("bomba.png");
+    if(!(*imgs).bombita)
+    {
+        printf("Error fatal: No se encontro 'bombita.png'\n");
         return false;
     }
 
@@ -2795,6 +3015,7 @@ bool cargar_recursos(recursos *imgs)
 
 void limpieza(recursos *imgs,ALLEGRO_FONT *fuente,ALLEGRO_TIMER *timer,ALLEGRO_EVENT_QUEUE *queue,ALLEGRO_DISPLAY *display)
 {
+    al_destroy_bitmap((*imgs).fondo_menu);
     al_destroy_bitmap((*imgs).fondo_nivel1);
     al_destroy_bitmap((*imgs).img_ataque);
     al_destroy_bitmap((*imgs).img_dano);
