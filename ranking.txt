@@ -31,3 +31,14 @@ pasto 280
 qqq 180
 lolsito 80
 elololo 1130
+pone 20
+ptwo 20
+pthree 170
+pp 330
+pfour 40
+wola 40
+e 180
+r 200
+d 470
+d 580
+ll 580
