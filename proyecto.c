@@ -79,6 +79,7 @@ struct personaje_
     float velocidad;
     float spawn_x;
     float spawn_y;
+    float y_azote;
     int vida;
     int escudo;
     int energia;
@@ -179,6 +180,7 @@ struct recursos_
     ALLEGRO_BITMAP *proteccion;
     ALLEGRO_BITMAP *bomba_enemiga;
     ALLEGRO_BITMAP *big_map;
+    ALLEGRO_BITMAP *img_final;
     ALLEGRO_SAMPLE *disparo_prota;
     ALLEGRO_SAMPLE *disparo_alien5;
     ALLEGRO_SAMPLE *disparo_alien6;
@@ -193,6 +195,7 @@ struct recursos_
     ALLEGRO_SAMPLE *sonido_puerta;
     ALLEGRO_SAMPLE *sonido_pasos;
     ALLEGRO_SAMPLE *sonido_palanca;
+    ALLEGRO_SAMPLE *pantalla_carga;
 };
 typedef struct recursos_ recursos;
 
@@ -241,12 +244,13 @@ struct contexto_dibujo_
 };
 typedef struct contexto_dibujo_ contexto_dibujo;
 
-struct ranking_
+struct datos_ranking_
 {
     char nombre[20];
     int puntaje;
+    int nivel;
 };
-typedef struct ranking_ ranking;
+typedef struct datos_ranking_ datos_ranking;
 
 char mapa[fila][columna];
 personaje heroe;
@@ -268,10 +272,11 @@ void trampitas(personaje *h,float *vel_caida,estado_juego *nivel);
 void portalito(personaje *h,bool *portal_abierto,bool *cambiar_nivel,recursos *imgs,estado_juego *nivel);
 void cambios_de_niveles(int *nivel_actual,bool *corriendo,bool *portal_abierto,float *vel_caida,estado_juego *nivel,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
 void disparar_proyectil(personaje *h,int tipo_municion,float direccion_mirada,recursos *imgs);
-void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
 void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
-void mostrar_controles(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_texto,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
 void mostrar_pantalla_carga(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
+void ranking(char *nombre,int puntaje,int nivel,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs,bool modo_guardar);
+void mostrar_informacion(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_texto,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
+void the_final(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *fuente_titulo,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs);
 bool cargar_mapa(const char *nombre_archivo,estado_juego *nivel);
 bool colision(float x,float y);
 bool colision_lasers(float x,float y);
@@ -281,7 +286,6 @@ bool colision_bombas_enemigas(float x,float y);
 
 int main()
 {
-    //4 y 7 de la pauta
     bool programa_completo=true;
     bool corriendo,menu,tiene_mapa,tecla_izq,tecla_der;
     bool dibujar=true;
@@ -386,11 +390,11 @@ int main()
             }
             if(seleccion==1)
             {
-                mostrar_controles(display,fuente_opciones,queue,&mis_imagenes);
+                mostrar_informacion(display,fuente_opciones,queue,&mis_imagenes);
             }
             if(seleccion==2)
             {
-                el_ranking(display,fuente_ranking,queue,&mis_imagenes);
+                ranking("",0,0,display,fuente_ranking,queue,&mis_imagenes,false);
             }
             if(seleccion==3)
             {
@@ -570,9 +574,10 @@ int main()
 
                 if(mi_nivel.juego_terminado) 
                 {
-                    printf("Felicidades! Has liberado a tu amigo y escapado.\n FIN DEL JUEGO.\n");
-                    corriendo=false;
+                    printf("Felicidades! Has escapado.\n FIN DEL JUEGO.\n");
                     heroe.puntos+=1000; 
+                    the_final(display,fuente_titulo,queue,&mis_imagenes);
+                    corriendo=false; 
                 }
 
                 dibujar=true;
@@ -650,17 +655,10 @@ int main()
             }
         }
         al_stop_timer(timer);
-        if (programa_completo&&heroe.puntos>0&&strlen(nombre_jugador)>0)
+        if(programa_completo&&heroe.puntos>0&&strlen(nombre_jugador)>0)
         {
-            FILE *archivo=fopen("ranking.txt","a");
-            if (archivo!=NULL) 
-            {
-                fprintf(archivo,"%s %d\n",nombre_jugador,heroe.puntos);
-                fclose(archivo);
-            }
-            printf("Puntaje en el ranking!\n");
-            
-            heroe.puntos=0; 
+            ranking(nombre_jugador,heroe.puntos,nivel_actual,display,fuente_ranking,queue,&mis_imagenes,true);
+            heroe.puntos=0;
         }
     }
 
@@ -1010,6 +1008,7 @@ void inicializar_personaje(personaje *entidad,int vida_base,float velocidad_base
     (*entidad).municion=10;
     (*entidad).duracion_linterna=0;
     (*entidad).tiene_mapita=false;
+    (*entidad).y_azote=0.0;
     for(i=0;i<MAX_COSAS;i++)
     {
         (*entidad).inventario[i]=0;
@@ -1076,6 +1075,7 @@ void inicializar_enemigo(enemigo *villano,int tipo_char,float x_inicial,float y_
 
 void mover_personaje(personaje *p,bool izq,bool der,float *vel_caida,estado_juego *nivel)
 {
+    float trayecto;
     if(izq)
     {
         (*p).x-=4.0;
@@ -1094,6 +1094,11 @@ void mover_personaje(personaje *p,bool izq,bool der,float *vel_caida,estado_jueg
         }
     }
 
+    if(*vel_caida<=0)
+    {
+        (*p).y_azote=(*p).y;
+    }
+
     *vel_caida+=0.5;
     (*p).y+=*vel_caida;
 
@@ -1104,6 +1109,25 @@ void mover_personaje(personaje *p,bool izq,bool der,float *vel_caida,estado_jueg
             if(!(*nivel).suelo_destruido)
             {
                 (*p).y=((int)((*p).y+39)/TAM_TILE)*TAM_TILE-39.1;
+                
+                trayecto=(*p).y-(*p).y_azote;
+                
+                if(trayecto>=(8*TAM_TILE))
+                {
+                    if((*p).escudo>0)
+                    {
+                        (*p).escudo--;
+                        (*p).tiempo_dano=30;
+                        printf("Caída fuerte! Tu escudo te salvó de romperte las piernas.\n");
+                    }
+                    else
+                    {
+                        (*p).vida-=20;
+                        (*p).tiempo_dano=30;
+                        printf("Daño por caída de %d bloques.\n",(int)(trayecto/TAM_TILE));
+                    }
+                }
+
                 *vel_caida=0;
             }
         }
@@ -1262,9 +1286,10 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos,estado_juego 
                                 ejercito[i].laser_enemigos[j].activo=true;
                                 ejercito[i].laser_enemigos[j].tipo=MUNICION_LASER;
                                 ejercito[i].laser_enemigos[j].distancia_recorrida=0.0;
-                                ejercito[i].laser_enemigos[j].x=ejercito[i].x + 20;
-                                ejercito[i].laser_enemigos[j].y=ejercito[i].y + 15;
+                                ejercito[i].laser_enemigos[j].x=ejercito[i].x+20;
+                                ejercito[i].laser_enemigos[j].y=ejercito[i].y+15;
                                 ejercito[i].laser_enemigos[j].velocidad_x=10.0*ejercito[i].direccion_mirada;
+                                ejercito[i].laser_enemigos[j].velocidad_y=0.0;
                                 al_play_sample((*sonidos).disparo_alien5,0.8,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                 break;
                             }
@@ -1275,7 +1300,7 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos,estado_juego 
                 }
                 else
                 {   
-                    if(ejercito[i].energia<=0) 
+                    if(ejercito[i].energia>0) 
                     {
                         ejercito[i].energia--;
                     }
@@ -1361,6 +1386,7 @@ void mover_enemigos(enemigo ejercito[],int total,recursos *sonidos,estado_juego 
                                     }
                                     ejercito[i].laser_enemigos[j].y = ejercito[i].y+16;
                                     ejercito[i].laser_enemigos[j].velocidad_x=15.0*ejercito[i].direccion_mirada; 
+                                    ejercito[i].laser_enemigos[j].velocidad_y=0.0;
                                     al_play_sample((*sonidos).disparo_alien6,0.8,0.0,1.0,ALLEGRO_PLAYMODE_ONCE,NULL);
                                     break;
                                 }
@@ -1684,7 +1710,11 @@ void mover_municion_heroe(municion balas[],int maximo,estado_juego *nivel)
                             enemigos[j].vida-=dano;
                             balas[i].activo=false;
                             
-                            if(enemigos[j].vida<=0&&enemigos[j].tipo=='5')
+                            if(enemigos[j].vida<=0&&enemigos[j].tipo=='2')
+                            {
+                                heroe.puntos+=25;
+                            }
+                            else if(enemigos[j].vida<=0&&enemigos[j].tipo=='5')
                             {
                                 heroe.puntos+=50;
                                 for(k=0;k<MAX_ITEMS;k++)
@@ -1700,6 +1730,10 @@ void mover_municion_heroe(municion balas[],int maximo,estado_juego *nivel)
                                         break;
                                     }
                                 }
+                            }
+                            else if(enemigos[j].vida<=0&&enemigos[j].tipo=='6')
+                            {
+                                heroe.puntos+=100;
                             }
                             else if(enemigos[j].vida<=0&&enemigos[j].tipo=='9')
                             {
@@ -1787,7 +1821,7 @@ void dibujar_juego(contexto_dibujo *graficos)
 {
     estado_juego *n=(*graficos).nivel;
     int i,j,k,recorte_x,recorte_y,recorte_portal_x,recorte_moneda_x,ancho_frame,alto_frame,ancho_puerta,alto_puerta,fila_y_alien6;
-    int salto_y,salto_x,fila_y,ancho_tile,alto_tile,fila_y_alien5,m_y,m_x,max_cuadros_boss;
+    int salto_y,salto_x,fila_y,ancho_tile,alto_tile,fila_y_alien5,m_y,m_x,max_cuadros_boss,imagen;
     int total_enemigos=(*n).total_enemigos;
     int luz_apagada=(*n).luz_apagada;
     int espejo_enemigo=0;
@@ -1803,9 +1837,7 @@ void dibujar_juego(contexto_dibujo *graficos)
     float ajuste_alien_y=10.0;
     float x_portal=(*n).x_portal;
     float y_portal=(*n).y_portal;
-    char nombre_archivo[30];
-    char estado_luz,caracter_leido;
-    char texto_secuencia[20];
+    char nombre_archivo[30],texto_secuencia[20],estado_luz,caracter_leido;
     bool portal_activo=(*n).portal_activo;
     enemigo *enemigos=(*n).enemigos;
     item *mis_items=(*n).mis_items;
@@ -1892,7 +1924,7 @@ void dibujar_juego(contexto_dibujo *graficos)
             }
             else if((mapa[i][j]=='C'||mapa[i][j]=='c')&&(*imgs).checkpoint!=NULL)
             {
-                ancho_frame=48;
+                ancho_frame=16;
                 alto_frame=48;
                 recorte_y=0;
                 
@@ -1902,10 +1934,10 @@ void dibujar_juego(contexto_dibujo *graficos)
                 }
                 else
                 {
-                    recorte_x=ancho_frame;
+                    recorte_x=8*ancho_frame;
                 }
                 
-                al_draw_scaled_bitmap((*imgs).checkpoint,recorte_x,recorte_y,ancho_frame,alto_frame,x_bloque,y_bloque,TAM_TILE,TAM_TILE,0);
+                al_draw_scaled_bitmap((*imgs).checkpoint,recorte_x,recorte_y,ancho_frame,alto_frame,x_bloque-10,y_bloque-5,60,60,0);
             }
         }
     }
@@ -1920,15 +1952,17 @@ void dibujar_juego(contexto_dibujo *graficos)
             }
             else if(mis_trampas[i].tipo=='q'&&(*imgs).img_quema!=NULL)
             {
-                if(mis_trampas[i].tiempo > 60)
+                ancho_frame=16;
+                alto_frame=64;
+                
+                imagen=mis_trampas[i].tiempo/14;
+                if(imagen>8)
                 {
-                    recorte_y = 40;
+                    imagen=8;
                 }
-                else
-                {
-                    recorte_y=0;
-                } 
-                al_draw_scaled_bitmap((*imgs).img_quema,0,recorte_y,al_get_bitmap_width((*imgs).img_quema),40,mis_trampas[i].x,mis_trampas[i].y,TAM_TILE,TAM_TILE,0);
+                
+                recorte_x=imagen*ancho_frame;
+                al_draw_scaled_bitmap((*imgs).img_quema,recorte_x,0,ancho_frame,alto_frame,mis_trampas[i].x,mis_trampas[i].y,TAM_TILE,160,0);
             }
         }
     }
@@ -2101,7 +2135,7 @@ void dibujar_juego(contexto_dibujo *graficos)
             {
                 recorte_y=4*alto_frame; 
                 max_cuadros_boss=6;
-                ajuste_piso=10.0;
+                ajuste_piso=-66.0;
             }
 
             if(enemigos[i].cuadro_actual>=max_cuadros_boss)
@@ -2400,34 +2434,34 @@ void dibujar_juego(contexto_dibujo *graficos)
             {
                 if(mis_items[i].activo) 
                 {
-                    mini_item_x = inicio_x_mapa + (mis_items[i].x / TAM_TILE) * mini_tile;
-                    mini_item_y = inicio_y_mapa + (mis_items[i].y / TAM_TILE) * mini_tile;
+                    mini_item_x=inicio_x_mapa+(mis_items[i].x/TAM_TILE)*mini_tile;
+                    mini_item_y=inicio_y_mapa+(mis_items[i].y/TAM_TILE)*mini_tile;
                 
-                    if(mis_items[i].tipo == ITEM_LLAVE_ROJA) 
+                    if(mis_items[i].tipo==ITEM_LLAVE_ROJA) 
                     {
-                        al_draw_filled_circle(mini_item_x + (mini_tile / 2.0), mini_item_y + (mini_tile / 2.0), mini_tile / 3.0, al_map_rgb(255, 50, 50));
+                        al_draw_filled_circle(mini_item_x+(mini_tile/2.0),mini_item_y+(mini_tile/2.0),mini_tile/3.0,al_map_rgb(255,50,50));
                     } 
-                    else if(mis_items[i].tipo == ITEM_LLAVE_VERDE) 
+                    else if(mis_items[i].tipo==ITEM_LLAVE_VERDE) 
                     {
-                        al_draw_filled_circle(mini_item_x + (mini_tile / 2.0), mini_item_y + (mini_tile / 2.0), mini_tile / 3.0, al_map_rgb(50, 255, 50));
+                        al_draw_filled_circle(mini_item_x+(mini_tile/2.0),mini_item_y+(mini_tile/2.0),mini_tile/3.0,al_map_rgb(50,255,50));
                     } 
-                    else if(mis_items[i].tipo == ITEM_LLAVE_AMARILLA) 
+                    else if(mis_items[i].tipo==ITEM_LLAVE_AMARILLA) 
                     {
-                        al_draw_filled_circle(mini_item_x + (mini_tile / 2.0), mini_item_y + (mini_tile / 2.0), mini_tile / 3.0, al_map_rgb(255, 255, 0));
+                        al_draw_filled_circle(mini_item_x+(mini_tile/2.0),mini_item_y+(mini_tile/2.0),mini_tile/3.0,al_map_rgb(255,255,0));
                     } 
-                    else if(mis_items[i].tipo == ITEM_LLAVE_AZUL) 
+                    else if(mis_items[i].tipo==ITEM_LLAVE_AZUL) 
                     {
-                        al_draw_filled_circle(mini_item_x + (mini_tile / 2.0), mini_item_y + (mini_tile / 2.0), mini_tile / 3.0, al_map_rgb(50, 150, 255));
+                        al_draw_filled_circle(mini_item_x+(mini_tile/2.0),mini_item_y+(mini_tile/2.0),mini_tile/3.0,al_map_rgb(50,150,255));
                     }
-                    else if(mis_items[i].tipo == ITEM_LLAVE_FINAL) 
+                    else if(mis_items[i].tipo==ITEM_LLAVE_FINAL) 
                     {
-                        al_draw_filled_circle(mini_item_x + (mini_tile / 2.0), mini_item_y + (mini_tile / 2.0), mini_tile / 2.0, al_map_rgb(255, 215, 0)); 
+                        al_draw_filled_circle(mini_item_x+(mini_tile/2.0),mini_item_y+(mini_tile/2.0),mini_tile/2.0,al_map_rgb(255,215,0)); 
                     }
                 }
             }
 
-            mini_heroe_x=inicio_x_mapa+(heroe.x / TAM_TILE)*mini_tile;
-            mini_heroe_y=inicio_y_mapa+(heroe.y / TAM_TILE)*mini_tile;
+            mini_heroe_x=inicio_x_mapa+(heroe.x/TAM_TILE)*mini_tile;
+            mini_heroe_y=inicio_y_mapa+(heroe.y/TAM_TILE)*mini_tile;
         
             al_draw_filled_circle(mini_heroe_x+(mini_tile/2.0),mini_heroe_y+(mini_tile/2.0),mini_tile/1.5,al_map_rgb(0,255,0));
             al_draw_circle(mini_heroe_x+(mini_tile/2.0),mini_heroe_y+(mini_tile/2.0),mini_tile/1.5,al_map_rgb(255,255,255),2.0);
@@ -2478,7 +2512,7 @@ bool colision_lasers(float x,float y)
     return false;
 }
 
-void recolectar_items(item lista_items[],int maximo,recursos *sonidos, estado_juego *nivel)
+void recolectar_items(item lista_items[],int maximo,recursos *sonidos,estado_juego *nivel)
 {
     int i,j,k,llave_esperada;
     bool guardado;
@@ -2529,7 +2563,7 @@ void recolectar_items(item lista_items[],int maximo,recursos *sonidos, estado_ju
                         if(heroe.inventario[j]==0)
                         {
                             heroe.inventario[j]=lista_items[i].tipo; 
-                            printf("Objeto guardado en el bolsillo %d\n", j);
+                            printf("Objeto guardado en el bolsillo %d\n",j);
                             lista_items[i].activo=false; 
                             guardado=true;
                             if(lista_items[i].tipo==ITEM_VENENO||lista_items[i].tipo==ITEM_BOMBA) 
@@ -2702,7 +2736,8 @@ void actualizar_estado_heroe(personaje *h,bool izq,bool der,float *vel_caida,int
 
 void trampitas(personaje *h,float *vel_caida,estado_juego *nivel) 
 {
-    int i;
+    int i,recuadro;
+    float fuego;
     bool trampita_mala;
     trampas *mis_trampas=(*nivel).mis_trampas;
 
@@ -2719,32 +2754,48 @@ void trampitas(personaje *h,float *vel_caida,estado_juego *nivel)
                 }
             }
             trampita_mala=false;
+            fuego=TAM_TILE;
 
             if(mis_trampas[i].tipo=='p')
             {
                 trampita_mala=true;
             }
-            else if(mis_trampas[i].tipo=='q'&&mis_trampas[i].tiempo>60)
+            else if(mis_trampas[i].tipo=='q')
             {
-                trampita_mala=true;
+                fuego=160.0;
+                recuadro=mis_trampas[i].tiempo/14;
+                
+                if(recuadro==6||recuadro==7)
+                {
+                    trampita_mala=true;
+                }
             }
 
-            if(trampita_mala&&(*h).x<mis_trampas[i].x+TAM_TILE&&(*h).x+40>mis_trampas[i].x&&(*h).y<mis_trampas[i].y+TAM_TILE&&(*h).y+40>mis_trampas[i].y) 
+            if(trampita_mala&&(*h).x<mis_trampas[i].x+TAM_TILE&&(*h).x+40>mis_trampas[i].x&&(*h).y<mis_trampas[i].y+fuego&&(*h).y+40>mis_trampas[i].y) 
             {
                 if((*h).tiempo_dano==0) 
                 {
-                    if(mis_trampas[i].tipo=='p')
+                    if((*h).escudo>0&&mis_trampas[i].tipo=='q')
                     {
-                        (*h).vida=0;
-                        *vel_caida=-6.0; 
-                        printf("Caiste en las púas!\n");
+                        (*h).escudo--;
+                        (*h).tiempo_dano=30;
+                        printf("El escudo absorbió el fuego! Resistencia: %d\n", (*h).escudo);
                     }
-                    else if(mis_trampas[i].tipo=='q')
+                    else
                     {
-                        (*h).vida-=20; 
-                        (*h).tiempo_dano=30; 
-                        *vel_caida=-4.0;
-                        printf("Te quemaste!, fijate por donde andas\n");
+                        if(mis_trampas[i].tipo=='p')
+                        {
+                            (*h).vida=0;
+                            *vel_caida=-6.0; 
+                            printf("Caiste en las púas!\n");
+                        }
+                        else if(mis_trampas[i].tipo=='q')
+                        {
+                            (*h).vida-=20; 
+                            (*h).tiempo_dano=30; 
+                            *vel_caida=-4.0;
+                            printf("Te quemaste!, fijate por donde andas\n");
+                        }
                     }
                 }
             }
@@ -2885,7 +2936,7 @@ void cambios_de_niveles(int *nivel_actual,bool *corriendo,bool *portal_abierto,f
 
 void disparar_proyectil(personaje *h,int tipo_municion,float direccion_mirada,recursos *imgs)
 {
-    int i, bolsillo;
+    int i,bolsillo;
     bool puede_disparar=false;
 
     if(tipo_municion==MUNICION_LASER&&(*h).municion>0) 
@@ -2977,7 +3028,7 @@ int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f
     int mouse_x,mouse_y,i,pos_y,y_max,y_min,x_max,x_min;
     int opcion_seleccionada=0;
     int total_opciones=4;
-    char opciones[4][15]={"Jugar","Controles","Ranking","Salir"};
+    char opciones[4][15]={"Jugar","Informacion","Ranking","Salir"};
     bool en_menu=true;
 
     al_flush_event_queue(queue);
@@ -3055,84 +3106,6 @@ int mostrar_menu(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f
     return 3;
 }
 
-void el_ranking(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
-{
-    int total_registros=0;
-    int i,j;
-    bool en_ranking = true;
-    ranking top[10];
-    ranking temp;
-
-    FILE *archivo=fopen("ranking.txt","r");
-    if(archivo!=NULL) 
-    {
-        while(fscanf(archivo,"%s %d",top[total_registros].nombre,&top[total_registros].puntaje)==2) 
-        {
-            total_registros++;
-            if (total_registros>=10) 
-            {
-                break; 
-            }
-        }
-        fclose(archivo);
-    }
-
-    for (i=0;i<total_registros-1;i++) 
-    {
-        for (j=0;j<total_registros-i-1;j++) 
-        {
-            if (top[j].puntaje<top[j+1].puntaje) 
-            {
-                temp=top[j];
-                top[j]=top[j+ 1];
-                top[j+1]=temp;
-            }
-        }
-    }
-
-    al_flush_event_queue(queue);
-
-    while (en_ranking) 
-    {
-        ALLEGRO_EVENT evento;
-        al_wait_for_event(queue,&evento);
-
-        if (evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE||(evento.type==ALLEGRO_EVENT_KEY_DOWN&&evento.keyboard.keycode==ALLEGRO_KEY_ESCAPE)) 
-        {
-            en_ranking=false;
-        }
-
-        if (al_is_event_queue_empty(queue)) 
-        {
-            al_clear_to_color(al_map_rgb(20,30,50));
-            if ((*imgs).fondo_menu!=NULL)
-            {
-                al_draw_scaled_bitmap((*imgs).fondo_menu,0,0,al_get_bitmap_width((*imgs).fondo_menu),al_get_bitmap_height((*imgs).fondo_menu),0,0,ancho_pantalla,alto_pantalla,0);
-            }
-            al_draw_text(f_ranking, al_map_rgb(255, 215, 0),ancho_pantalla/2,100,ALLEGRO_ALIGN_CENTER,"MEJORES PUNTUACIONES");
-            
-            if (total_registros==0) 
-            {
-                al_draw_text(f_ranking,al_map_rgb(255,255,255),ancho_pantalla/2,250,ALLEGRO_ALIGN_CENTER,"No existe el ranking aun.");
-            }
-            else 
-            {
-                for (i=0;i<total_registros;i++) 
-                {
-                    char linea_texto[100];
-                    
-                    snprintf(linea_texto,sizeof(linea_texto),"%d. %s - %d pts",i+1,top[i].nombre,top[i].puntaje);
-                    
-                    al_draw_text(f_ranking,al_map_rgb(255,255,255),ancho_pantalla/2,200+(i*40),ALLEGRO_ALIGN_CENTER,linea_texto);
-                }
-            }
-            
-            al_draw_text(f_ranking,al_map_rgb(150,150,150),ancho_pantalla/2,alto_pantalla-100,ALLEGRO_ALIGN_CENTER,"Presiona ESC para volver");
-            al_flip_display();
-        }
-    }
-}
-
 void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
 {
     int contador_letras=0;
@@ -3196,22 +3169,22 @@ void pedir_nombre(char *nombre,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_nombre,A
     }
 }
 
-void mostrar_controles(ALLEGRO_DISPLAY *display, ALLEGRO_FONT *f_texto, ALLEGRO_EVENT_QUEUE *queue, recursos *imgs)
+void mostrar_informacion(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_texto,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
 {
-    bool en_controles=true;
+    bool en_info=true;
     al_flush_event_queue(queue);
 
-    while(en_controles) 
+    while(en_info) 
     {
         ALLEGRO_EVENT evento;
         al_wait_for_event(queue,&evento);
 
         if(evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE||(evento.type==ALLEGRO_EVENT_KEY_DOWN&&evento.keyboard.keycode==ALLEGRO_KEY_ESCAPE)) 
         {
-            en_controles=false;
+            en_info=false;
         }
 
-        if (al_is_event_queue_empty(queue)) 
+        if(al_is_event_queue_empty(queue)) 
         {
             al_clear_to_color(al_map_rgb(20,30,50));
             if ((*imgs).fondo_menu!=NULL)
@@ -3219,13 +3192,35 @@ void mostrar_controles(ALLEGRO_DISPLAY *display, ALLEGRO_FONT *f_texto, ALLEGRO_
                 al_draw_scaled_bitmap((*imgs).fondo_menu,0,0,al_get_bitmap_width((*imgs).fondo_menu),al_get_bitmap_height((*imgs).fondo_menu),0,0,ancho_pantalla,alto_pantalla,0);
             }
             
-            al_draw_text(f_texto,al_map_rgb(255,215,0),ancho_pantalla/2,100,ALLEGRO_ALIGN_CENTER,"CONTROLES DEL JUEGO");
-            
-            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,250,ALLEGRO_ALIGN_CENTER,"Flecha Izquierda/Derecha: Moverse");
-            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,300,ALLEGRO_ALIGN_CENTER, "Flecha Arriba : Saltar");
-            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,350,ALLEGRO_ALIGN_CENTER,"Barra Espaciadora : Disparar Laser");
-            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,400,ALLEGRO_ALIGN_CENTER,"Tecla V: Lanzar Veneno");
-            al_draw_text(f_texto, al_map_rgb(150, 150, 150), ancho_pantalla / 2, alto_pantalla - 100, ALLEGRO_ALIGN_CENTER, "Presiona ESC para volver al menu");
+            al_draw_text(f_texto,al_map_rgb(255,215,0),ancho_pantalla/2,40,ALLEGRO_ALIGN_CENTER,"INFORMACION DEL Astrokey");
+            al_draw_text(f_texto,al_map_rgb(100,200,255),ancho_pantalla/2,100,ALLEGRO_ALIGN_CENTER,"CONTROLES");
+            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,135,ALLEGRO_ALIGN_CENTER,"Movimiento: Flechas, Saltar: Arriba, Disparar: Espacio");
+            al_draw_text(f_texto,al_map_rgb(255,255,255),ancho_pantalla/2,165,ALLEGRO_ALIGN_CENTER,"Acciones: V (Veneno), B (Bomba), M (Minimapa)");
+            al_draw_text(f_texto,al_map_rgb(100,200,255),ancho_pantalla/2,215,ALLEGRO_ALIGN_CENTER,"ENEMIGOS");
+            if((*imgs).img_basico!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).img_basico,0,0,64,64,450,250,50,50,0);
+            }
+            al_draw_text(f_texto,al_map_rgb(255,255,255),520,260,ALLEGRO_ALIGN_LEFT,"Alien Basico: Patrulla zonas y te ataca de cerca.");
+
+            if((*imgs).alien5!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).alien5,0,0,48,48,450,320,50,50,0);
+            }
+            al_draw_text(f_texto,al_map_rgb(255,255,255),520,330,ALLEGRO_ALIGN_LEFT,"Alien Disparador: Te ataca disparando rayos laser.");
+
+            if((*imgs).intenemy!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).intenemy,0,0,64,70,450,390,50,50,0);
+            }
+            al_draw_text(f_texto,al_map_rgb(255,255,255),520,400,ALLEGRO_ALIGN_LEFT,"Alien Intermedio: Se desplaza rápido y dispara proyectiles.");
+            al_draw_text(f_texto,al_map_rgb(100,200,255),ancho_pantalla/2,470,ALLEGRO_ALIGN_CENTER,"JEFE FINAL");
+            if((*imgs).boss!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).boss,0,0,48,48,450,510,60,60,0);
+            }
+            al_draw_text(f_texto,al_map_rgb(255,255,255),520,525,ALLEGRO_ALIGN_LEFT,"Alien Boss: Muy resistente. Debilitalo con bombas y venenos.");
+            al_draw_text(f_texto,al_map_rgb(150,150,150),ancho_pantalla/2,alto_pantalla-80,ALLEGRO_ALIGN_CENTER,"Presiona ESC para volver al menu");
             
             al_flip_display();
         }
@@ -3234,8 +3229,8 @@ void mostrar_controles(ALLEGRO_DISPLAY *display, ALLEGRO_FONT *f_texto, ALLEGRO_
 
 void mover_jefe(enemigo *boss,recursos *sonidos,estado_juego *nivel)
 {
-    int j, enfriamiento, probabilidad_salto; 
-    float dist_x_abs, dist_y_abs, dist_x, dist_y, velocidad_boss;
+    int j,enfriamiento,probabilidad_salto; 
+    float dist_x_abs,dist_y_abs,dist_x,dist_y,velocidad_boss;
     bool enfurecido;
 
     dist_x=heroe.x-(*boss).x;
@@ -3268,7 +3263,7 @@ void mover_jefe(enemigo *boss,recursos *sonidos,estado_juego *nivel)
         (*boss).direccion_mirada=-1.0; 
     }
 
-    enfurecido = false;
+    enfurecido=false;
     if((*boss).vida<=500) 
     { 
         enfurecido=true; 
@@ -3334,6 +3329,7 @@ void mover_jefe(enemigo *boss,recursos *sonidos,estado_juego *nivel)
                         {
                             (*boss).laser_enemigos[j].velocidad_x=12.0*(*boss).direccion_mirada;
                         }
+                        (*boss).laser_enemigos[j].velocidad_y=0.0;
                         break;
                     }
                 }
@@ -3377,9 +3373,12 @@ void mover_jefe(enemigo *boss,recursos *sonidos,estado_juego *nivel)
             
             if((*boss).velocidad_y>8.0) 
             {
-                (*nivel).suelo_destruido=true;
-                (*nivel).temporizador_suelo=60;
-                printf("TERREMOTO!\n");
+                if(rand()%4==0) 
+                {
+                    (*nivel).suelo_destruido=true;
+                    (*nivel).temporizador_suelo=60;
+                    printf("TERREMOTO!\n");
+                }
             }
             (*boss).velocidad_y=0.0;
         }
@@ -3460,7 +3459,7 @@ bool colision_bombas_enemigas(float x, float y)
 void mostrar_pantalla_carga(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLEGRO_FONT *f_opciones,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
 {
     char mensaje_actual[100]="Cargando siguiente nivel...";
-    char lineas[50][100];
+    char lineas[10][100];
     int total_lineas=0;
     int indice;
     
@@ -3470,7 +3469,7 @@ void mostrar_pantalla_carga(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLE
         while(fscanf(archivo,"%s",lineas[total_lineas])==1)
         {
             total_lineas++;
-            if(total_lineas>=50) 
+            if(total_lineas>=8) 
             {
                 break;
             }
@@ -3480,6 +3479,7 @@ void mostrar_pantalla_carga(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLE
         if(total_lineas>0)
         {
             indice=rand()%total_lineas;
+            printf("%d\n",indice);
             strcpy(mensaje_actual,lineas[indice]);
         }
     }
@@ -3497,7 +3497,152 @@ void mostrar_pantalla_carga(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_titulo,ALLE
     al_draw_text(f_opciones,al_map_rgb(150,150,150),ancho_pantalla/2,alto_pantalla-150,ALLEGRO_ALIGN_CENTER,"Por favor espera...");
     
     al_flip_display();
-    al_rest(2.5); 
+    al_rest(3.0); 
+}
+
+void ranking(char *nombre,int puntaje,int nivel,ALLEGRO_DISPLAY *display,ALLEGRO_FONT *f_ranking,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs,bool modo_guardar)
+{
+    datos_ranking top[6];
+    datos_ranking temp;
+    int total_registros=0;
+    int i,j,resultado,posicion,limite,mostrar_limite;
+    char linea_texto[120];
+    bool  en_ranking;
+    
+    FILE *archivo=fopen("ranking.txt","r");
+    if (archivo!=NULL) 
+    {
+        while(total_registros<10) 
+        {
+            resultado=fscanf(archivo,"%s %d %d",top[total_registros].nombre,&top[total_registros].puntaje,&top[total_registros].nivel);
+            if(resultado!=3) 
+            {
+                break;
+            }
+
+            total_registros++;
+        }
+        fclose(archivo);
+    }
+    if (modo_guardar)
+    {
+        if (puntaje>0&&strlen(nombre)>0)
+        {
+            posicion=total_registros;
+
+            for(i=0;i<total_registros;i++)
+            {
+                if(puntaje>top[i].puntaje)
+                {
+                    posicion=i;
+                    break;
+                }
+            }
+
+            if(posicion<5)
+            {
+                for(j=total_registros;j>posicion;j--)
+                {
+                    if (j<5)
+                    {
+                        top[j]=top[j-1];
+                    }
+                }
+
+                strcpy(top[posicion].nombre,nombre);
+                top[posicion].puntaje=puntaje;
+                top[posicion].nivel=nivel;
+
+                if (total_registros<5)
+                {
+                    total_registros++;
+                }
+            }
+
+            archivo=fopen("ranking.txt","w");
+            if(archivo!=NULL) 
+            {
+                if(total_registros<5) 
+                {
+                    limite=total_registros;
+                } 
+                else 
+                {
+                    limite=5;
+                }
+                for (i=0;i<limite;i++) 
+                {
+                    fprintf(archivo,"%s %d %d\n",top[i].nombre,top[i].puntaje,top[i].nivel);
+                }
+                fclose(archivo);
+            }
+            printf("Puntaje guardado en el ranking!\n");
+        }
+        return; 
+    }
+
+    al_flush_event_queue(queue);
+    en_ranking=true;
+
+    while(en_ranking) 
+    {
+        ALLEGRO_EVENT evento;
+        al_wait_for_event(queue,&evento);
+
+        if(evento.type==ALLEGRO_EVENT_DISPLAY_CLOSE||(evento.type==ALLEGRO_EVENT_KEY_DOWN&&evento.keyboard.keycode==ALLEGRO_KEY_ESCAPE)) 
+        {
+            en_ranking=false;
+        }
+
+        if(al_is_event_queue_empty(queue)) 
+        {
+            al_clear_to_color(al_map_rgb(20,30,50));
+            if((*imgs).fondo_menu!=NULL)
+            {
+                al_draw_scaled_bitmap((*imgs).fondo_menu,0,0,al_get_bitmap_width((*imgs).fondo_menu),al_get_bitmap_height((*imgs).fondo_menu),0,0,ancho_pantalla, alto_pantalla,0);
+            }
+            al_draw_text(f_ranking,al_map_rgb(255,215,0),ancho_pantalla/2,100,ALLEGRO_ALIGN_CENTER,"MEJORES PUNTUACIONES");
+            
+            if (total_registros==0) 
+            {
+                al_draw_text(f_ranking,al_map_rgb(255,255,255),ancho_pantalla/2,250,ALLEGRO_ALIGN_CENTER,"No existe el ranking aun.");
+            }
+            else 
+            {
+                if (total_registros<5) 
+                {
+                    mostrar_limite=total_registros;
+                } 
+                else 
+                {
+                    mostrar_limite=5;
+                }
+                for (i=0;i<mostrar_limite;i++) 
+                {
+                    snprintf(linea_texto,sizeof(linea_texto),"%d. %s  -  %d pts  (Nivel %d)",i+1,top[i].nombre,top[i].puntaje,top[i].nivel);
+                    al_draw_text(f_ranking,al_map_rgb(255,255,255),ancho_pantalla/2,220+(i*50),ALLEGRO_ALIGN_CENTER,linea_texto);
+                }
+            }
+            
+            al_draw_text(f_ranking,al_map_rgb(150,150,150),ancho_pantalla/2,alto_pantalla-100,ALLEGRO_ALIGN_CENTER,"Presiona ESC para volver");
+            al_flip_display();
+        }
+    }
+}
+
+void the_final(ALLEGRO_DISPLAY *display,ALLEGRO_FONT *fuente_titulo,ALLEGRO_EVENT_QUEUE *queue,recursos *imgs)
+{
+    al_flush_event_queue(queue);
+    al_clear_to_color(al_map_rgb(0,0,0));
+
+    if((*imgs).img_final!=NULL)
+    {
+        al_draw_scaled_bitmap((*imgs).img_final,0,0,al_get_bitmap_width((*imgs).img_final),al_get_bitmap_height((*imgs).img_final),0,0,ancho_pantalla,alto_pantalla,0);
+    }
+    al_draw_text(fuente_titulo,al_map_rgb(255,215,0),ancho_pantalla/2,alto_pantalla/2-50,ALLEGRO_ALIGN_CENTER,"HAS SIDO LIBERADO DE LOS ALIENS!");
+
+    al_flip_display();
+    al_rest(5.0); 
 }
 
 bool cargar_recursos(recursos *imgs)
@@ -3760,6 +3905,13 @@ bool cargar_recursos(recursos *imgs)
         return false;
     }
 
+    (*imgs).img_final=al_load_bitmap("Final.jpg");
+    if(!(*imgs).img_final)
+    {
+        printf("Error fatal: No se encontro 'Final.jpg'\n");
+        return false;
+    }
+
     (*imgs).disparo_prota=al_load_sample("laser_prota.ogg");
     if(!(*imgs).disparo_prota)
     {
@@ -3858,6 +4010,13 @@ bool cargar_recursos(recursos *imgs)
         return false;
     }
 
+    (*imgs).pantalla_carga=al_load_sample("carga.ogg");
+    if(!(*imgs).sonido_puerta)
+    {
+        printf("Error fatal: No se encontro 'carga.ogg'\n");
+        return false;
+    }
+
     return true; 
 }
 
@@ -3892,6 +4051,7 @@ void limpieza(recursos *imgs,ALLEGRO_FONT *fuente,ALLEGRO_TIMER *timer,ALLEGRO_E
     al_destroy_bitmap((*imgs).door);
     al_destroy_bitmap((*imgs).intenemy);
     al_destroy_bitmap((*imgs).big_map);
+    al_destroy_bitmap((*imgs).img_final);
     al_destroy_sample((*imgs).disparo_prota);
     al_destroy_sample((*imgs).disparo_alien5);
     al_destroy_sample((*imgs).disparo_alien6);
